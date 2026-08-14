@@ -6,8 +6,8 @@ export * from "./schema/tool";
 export * from "./provider/provider.interface";
 export * from "./provider/openrouter";
 
-// Tool Registry & Primitives
-export * from "./tools/registry";
+// Tool Registry & Built-in Primitives
+export * from "./tools";
 
 // State Machine & Loop
 export * from "./agent/state-machine";
@@ -18,6 +18,12 @@ export * from "./session";
 
 // Execution Layer (Adapter Pattern)
 export * from "./execution";
+
+// HTTP REST Server (BFF API Layer)
+export * from "./http";
+
+// Observability, Health Checks & Error Reporting
+export * from "./observability";
 
 import { AgentLoop } from "./agent/loop";
 import { OpenRouterProvider } from "./provider/openrouter";

@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { z } from "zod";
 import { ToolRegistry } from "./registry";
 import { zodToJsonSchema } from "./schema";
-import { ENVELOPE_VERSION_V1, createToolCallV1 } from "@crucible/shared-schemas";
+import {
+  ENVELOPE_VERSION_V1,
+  createToolCallV1,
+} from "@crucible/shared-schemas";
 
 describe("Tool Contract & Schema Transformation", () => {
   it("should convert Zod schema to standard JSON Schema Object", () => {
@@ -167,7 +170,11 @@ describe("ToolRegistry Contract & Command Execution", () => {
 
     expect(
       registry.requiresApproval(
-        createToolCallV1({ callId: "c1", toolName: "static_danger", input: {} }),
+        createToolCallV1({
+          callId: "c1",
+          toolName: "static_danger",
+          input: {},
+        }),
       ),
     ).toBe(true);
 

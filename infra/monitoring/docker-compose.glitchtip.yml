@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: crucible-glitchtip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: glitchtip_password
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: crucible-glitchtip-redis
+    restart: unless-stopped
+
+  web:
+    image: glitchtip/glitchtip:latest
+    container_name: crucible-glitchtip-web
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://postgres:glitchtip_password@postgres:5432/glitchtip
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: change-me-to-a-secure-random-secret
+      GLITCHTIP_DOMAIN: http://localhost:8000
+
+volumes:
+  pg-data:
+    name: crucible-glitchtip-pgdata

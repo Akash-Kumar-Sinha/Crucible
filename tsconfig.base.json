@@ -15,7 +15,9 @@
     "baseUrl": ".",
     "paths": {
       "@crucible/shared-schemas": ["packages/shared-schemas/src/index.ts"],
-      "@crucible/shared-schemas/*": ["packages/shared-schemas/src/*"]
+      "@crucible/shared-schemas/*": ["packages/shared-schemas/src/*"],
+      "@crucible/orchestrator": ["apps/orchestrator/src/index.ts"],
+      "@crucible/orchestrator/*": ["apps/orchestrator/src/*"]
     }
   }
 }

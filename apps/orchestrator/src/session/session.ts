@@ -182,8 +182,16 @@ export class Session extends EventEmitter {
         }
       } else if (result.state === "error") {
         this.setStatus("error");
+        const errorMsg =
+          result.error || "Session execution encountered an error";
+        const assistantErrorMessage: AgentMessage = {
+          role: "assistant",
+          content: `⚠️ **Execution Error**: ${errorMsg}`,
+        };
+        this.loop.getContext().messages.push(assistantErrorMessage);
+        this.emit("message", assistantErrorMessage);
         this.emit("error", {
-          message: result.error || "Session execution encountered an error",
+          message: errorMsg,
         });
       } else if (result.state === "awaiting_human") {
         this.setStatus("awaiting_human");
@@ -192,7 +200,14 @@ export class Session extends EventEmitter {
       return result;
     } catch (err: any) {
       this.setStatus("error");
-      const errorObj = { message: err?.message || String(err), details: err };
+      const errorMsg = err?.message || String(err);
+      const assistantErrorMessage: AgentMessage = {
+        role: "assistant",
+        content: `⚠️ **Execution Error**: ${errorMsg}`,
+      };
+      this.loop.getContext().messages.push(assistantErrorMessage);
+      this.emit("message", assistantErrorMessage);
+      const errorObj = { message: errorMsg, details: err };
       this.emit("error", errorObj);
       throw err;
     }

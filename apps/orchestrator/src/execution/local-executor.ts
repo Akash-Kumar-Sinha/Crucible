@@ -58,7 +58,6 @@ export class LocalExecutor implements Executor {
       const child = spawn(this.shell, ["-c", request.command], {
         cwd,
         env: procEnv,
-        stdio: ["ignore", "pipe", "pipe"],
       });
 
       // Timeout handler
@@ -81,19 +80,19 @@ export class LocalExecutor implements Executor {
         });
       }
 
-      child.stdout.on("data", (data: Buffer) => {
+      child.stdout?.on("data", (data: Buffer) => {
         if (stdout.length < this.maxBufferBytes) {
           stdout += data.toString("utf8");
         }
       });
 
-      child.stderr.on("data", (data: Buffer) => {
+      child.stderr?.on("data", (data: Buffer) => {
         if (stderr.length < this.maxBufferBytes) {
           stderr += data.toString("utf8");
         }
       });
 
-      child.on("error", (err: Error) => {
+      (child as any).on("error", (err: Error) => {
         if (timer) clearTimeout(timer);
         resolve({
           exitCode: 1,
@@ -104,7 +103,7 @@ export class LocalExecutor implements Executor {
         });
       });
 
-      child.on("close", (code: number | null) => {
+      (child as any).on("close", (code: number | null) => {
         if (timer) clearTimeout(timer);
         resolve({
           exitCode: code ?? (killed ? 137 : 0),

@@ -83,7 +83,11 @@ export class AgentLoop {
     const currentState = this.stateMachine.getState();
 
     // Ingest prompt into state machine
-    if (this.stateMachine.getContext().messages.length === 0 || currentState === "done" || currentState === "error") {
+    if (
+      this.stateMachine.getContext().messages.length === 0 ||
+      currentState === "done" ||
+      currentState === "error"
+    ) {
       this.stateMachine.send({ type: "START", prompt });
     }
 

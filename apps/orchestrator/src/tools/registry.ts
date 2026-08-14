@@ -106,8 +106,7 @@ export class ToolRegistry {
     const tool = this.tools.get(toolName);
     if (!tool || !tool.requiresApproval) return false;
 
-    const input =
-      "input" in call ? call.input : (call as any).arguments || {};
+    const input = "input" in call ? call.input : (call as any).arguments || {};
 
     if (typeof tool.requiresApproval === "function") {
       return tool.requiresApproval(input);
@@ -146,7 +145,12 @@ export class ToolRegistry {
   async execute(
     call:
       | ToolCallEnvelopeV1
-      | { id: string; name: string; arguments?: Record<string, unknown>; input?: Record<string, unknown> },
+      | {
+          id: string;
+          name: string;
+          arguments?: Record<string, unknown>;
+          input?: Record<string, unknown>;
+        },
     context: ToolExecutionContext,
   ): Promise<ToolResultEnvelopeV1> {
     const startTime = Date.now();

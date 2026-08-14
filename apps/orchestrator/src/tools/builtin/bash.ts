@@ -8,7 +8,9 @@ export interface BashToolOptions {
   requiresApproval?: boolean;
 }
 
-export function createBashTool(options: BashToolOptions = {}): ToolDefinition<
+export function createBashTool(
+  options: BashToolOptions = {},
+): ToolDefinition<
   { command: string; cwd?: string; timeoutMs?: number },
   { exitCode: number; stdout: string; stderr: string; durationMs: number }
 > {
@@ -20,11 +22,16 @@ export function createBashTool(options: BashToolOptions = {}): ToolDefinition<
       "Execute a shell command in the local environment and return stdout, stderr, and exitCode",
     parameters: z.object({
       command: z.string().describe("The shell command line to execute"),
-      cwd: z.string().optional().describe("Optional directory to run the command in"),
+      cwd: z
+        .string()
+        .optional()
+        .describe("Optional directory to run the command in"),
       timeoutMs: z
         .number()
         .optional()
-        .describe("Optional timeout in milliseconds before killing the process"),
+        .describe(
+          "Optional timeout in milliseconds before killing the process",
+        ),
     }),
     requiresApproval: options.requiresApproval ?? false,
     execute: async ({ command, cwd, timeoutMs }, ctx) => {

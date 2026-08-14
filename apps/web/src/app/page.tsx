@@ -1,0 +1,96 @@
+"use client";
+
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import { orchestratorClient } from "../api/orchestrator-client";
+import { useSessionStore } from "../stores/session-store";
+import { SessionSidebar } from "../components/SessionSidebar";
+import { ChatWindow } from "../components/ChatWindow";
+
+export default function HomePage() {
+  const router = useRouter();
+  const sessions = useSessionStore((s) => s.sessions);
+  const loading = useSessionStore((s) => s.isLoading);
+  const setSessions = useSessionStore((s) => s.setSessions);
+  const addSessionToList = useSessionStore((s) => s.addSessionToList);
+  const setLoading = useSessionStore((s) => s.setLoading);
+  const removeSessionFromList = useSessionStore((s) => s.removeSessionFromList);
+  const setError = useSessionStore((s) => s.setError);
+  const error = useSessionStore((s) => s.error);
+
+  const fetchSessions = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const list = await orchestratorClient.listSessions();
+      setSessions(list);
+      // Auto-navigate to latest session if available
+      if (list.length > 0) {
+        router.push(`/session/${list[list.length - 1].id}`);
+      }
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          "Failed to connect to orchestrator on port 4000. Run 'make serve' to start backend.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [router, setSessions, setLoading, setError]);
+
+  React.useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const handleCreateSession = async () => {
+    try {
+      setError(null);
+      const created = await orchestratorClient.createSession();
+      addSessionToList({
+        id: created.id,
+        title: created.title,
+        status: created.status,
+        agentState: "awaiting_model",
+        messageCount: 0,
+        stepCount: 0,
+        turnCount: 0,
+        createdAt: created.createdAt,
+        updatedAt: created.createdAt,
+      });
+      router.push(`/session/${created.id}`);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          "Failed to create session. Run 'make serve' to start the orchestrator.",
+      );
+      throw err;
+    }
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    try {
+      await orchestratorClient.deleteSession(id);
+      removeSessionFromList(id);
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete session.");
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+      }}
+    >
+      <SessionSidebar
+        sessions={sessions}
+        onCreateSession={handleCreateSession}
+        onDeleteSession={handleDeleteSession}
+        loading={loading}
+      />
+      <ChatWindow session={null} onSendMessage={async () => {}} error={error} />
+    </div>
+  );
+}

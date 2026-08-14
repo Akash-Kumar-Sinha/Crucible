@@ -86,10 +86,11 @@ function handleAwaitingModel(
       return "awaiting_tool";
     }
 
-    context.finalResponse = res.content || "";
+    const responseContent = res.content ?? (res as any).text ?? "";
+    context.finalResponse = responseContent;
     context.messages.push({
       role: "assistant",
-      content: res.content || "",
+      content: responseContent,
       thought: res.thought,
     });
 

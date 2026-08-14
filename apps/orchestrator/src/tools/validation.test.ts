@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { z } from "zod";
 import { ToolRegistry } from "./registry";
 import { AgentLoop } from "../agent/loop";
-import { ENVELOPE_VERSION_V1, createToolCallV1 } from "@crucible/shared-schemas";
+import {
+  ENVELOPE_VERSION_V1,
+  createToolCallV1,
+} from "@crucible/shared-schemas";
 import type {
   ModelProvider,
   ModelRequest,
@@ -63,7 +66,10 @@ describe("Tool Schema Validation & Envelope Contracts", () => {
       },
     });
 
-    const result = await registry.execute(badCall, { sessionId: "s1", step: 1 });
+    const result = await registry.execute(badCall, {
+      sessionId: "s1",
+      step: 1,
+    });
 
     expect(result.version).toBe(ENVELOPE_VERSION_V1);
     expect(result.callId).toBe("call_err_456");

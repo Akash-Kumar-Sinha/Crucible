@@ -1,0 +1,34 @@
+# Crucible Health Check Probes Configuration (Uptime Kuma / Synthetic Probes)
+version: "1.0"
+service: "crucible"
+
+probes:
+  orchestrator_liveness:
+    name: "Crucible Orchestrator Liveness"
+    type: "http"
+    url: "http://localhost:4000/healthz"
+    method: "GET"
+    interval_seconds: 15
+    timeout_seconds: 5
+    expected_status: [200]
+    max_retries: 2
+
+  orchestrator_readiness:
+    name: "Crucible Orchestrator Readiness"
+    type: "http"
+    url: "http://localhost:4000/readyz"
+    method: "GET"
+    interval_seconds: 30
+    timeout_seconds: 10
+    expected_status: [200]
+    max_retries: 2
+
+  web_ui_health:
+    name: "Crucible Web UI Health"
+    type: "http"
+    url: "http://localhost:3000/api/health"
+    method: "GET"
+    interval_seconds: 20
+    timeout_seconds: 5
+    expected_status: [200]
+    max_retries: 2

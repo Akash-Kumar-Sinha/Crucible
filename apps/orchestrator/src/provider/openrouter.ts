@@ -7,6 +7,44 @@ import type {
 } from "./provider.interface";
 import { cleanThoughtTags, extractThought } from "./thought-parser";
 
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+function resolveApiKey(explicitKey?: string): string {
+  if (explicitKey) return explicitKey;
+  if (process.env.OPENROUTER_API_KEY)
+    return process.env.OPENROUTER_API_KEY.trim();
+  if (process.env.OPENROUTER) return process.env.OPENROUTER.trim();
+
+  // Search candidate .env paths up the tree
+  const candidatePaths = [
+    resolve(process.cwd(), ".env"),
+    resolve(process.cwd(), "../.env"),
+    resolve(process.cwd(), "../../.env"),
+    "/home/aks/vs_stuff/Development/devs_in_ai/Crucible/.env",
+  ];
+
+  for (const envPath of candidatePaths) {
+    if (existsSync(envPath)) {
+      try {
+        const text = readFileSync(envPath, "utf-8");
+        const match = text.match(
+          /OPENROUTER(?:_API_KEY)?=["']?([^"'\r\n]+)["']?/,
+        );
+        if (match && match[1]) {
+          const key = match[1].trim();
+          process.env.OPENROUTER_API_KEY = key;
+          return key;
+        }
+      } catch {
+        // continue search
+      }
+    }
+  }
+
+  return "";
+}
+
 export interface OpenRouterConfig {
   apiKey?: string;
   baseUrl?: string;
@@ -24,14 +62,10 @@ export class OpenRouterProvider implements ModelProvider {
   private readonly siteName: string;
 
   constructor(config: OpenRouterConfig = {}) {
-    this.apiKey =
-      config.apiKey ||
-      process.env.OPENROUTER ||
-      process.env.OPENROUTER_API_KEY ||
-      "";
+    this.apiKey = resolveApiKey(config.apiKey);
     this.baseUrl = config.baseUrl || "https://openrouter.ai/api/v1";
     this.defaultModel =
-      config.defaultModel || "nvidia/nemotron-3-nano-30b-a3b:free";
+      config.defaultModel || process.env.OPENROUTER_MODEL || "openrouter/free";
     this.siteUrl = config.siteUrl || "https://github.com/crucible/crucible";
     this.siteName = config.siteName || "Crucible Orchestrator";
   }
@@ -58,17 +92,36 @@ export class OpenRouterProvider implements ModelProvider {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `OpenRouter API error (${response.status} ${response.statusText}): ${errorText}`,
-      );
+      let userFriendlyMessage = `OpenRouter API error (${response.status} ${response.statusText})`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson?.error?.message) {
+          if (
+            response.status === 429 ||
+            errorJson.error.message.includes("Rate limit exceeded") ||
+            errorJson.error.message.includes("free-models-per-day")
+          ) {
+            userFriendlyMessage = `OpenRouter Free Tier Limit Reached (50 requests/day): ${errorJson.error.message}. Please update OPENROUTER_API_KEY in .env with a new key or set OPENROUTER_MODEL="mock" for offline local testing.`;
+          } else {
+            userFriendlyMessage = `OpenRouter Error (${response.status}): ${errorJson.error.message}`;
+          }
+        }
+      } catch {
+        userFriendlyMessage = `${userFriendlyMessage}: ${errorText}`;
+      }
+      throw new Error(userFriendlyMessage);
     }
 
     const data = (await response.json()) as any;
-    const choice = data.choices?.[0];
+    if (data.error) {
+      const msg = data.error.message || JSON.stringify(data.error);
+      throw new Error(`OpenRouter error: ${msg}`);
+    }
 
+    const choice = data.choices?.[0];
     if (!choice) {
       throw new Error(
-        "OpenRouter returned empty choices in completion response",
+        `OpenRouter returned empty choices: ${JSON.stringify(data)}`,
       );
     }
 
@@ -178,7 +231,11 @@ export class OpenRouterProvider implements ModelProvider {
         formatted.push({
           role: "tool",
           tool_call_id: msg.toolCallId || "unknown",
-          content: msg.content,
+          name: msg.name,
+          content:
+            typeof msg.content === "string"
+              ? msg.content
+              : JSON.stringify(msg.content),
         });
       } else if (msg.role === "assistant") {
         const item: Record<string, unknown> = {

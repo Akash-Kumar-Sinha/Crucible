@@ -12,11 +12,7 @@ import type { AgentLoopResult } from "../agent/loop";
 export type SessionId = string;
 
 export type SessionStatus =
-  | "idle"
-  | "running"
-  | "awaiting_human"
-  | "done"
-  | "error";
+  "idle" | "running" | "awaiting_human" | "done" | "error";
 
 export interface SessionConfig {
   sessionId?: SessionId;
@@ -83,5 +79,8 @@ export interface SessionManagerEvents {
   sessionCreated: (sessionSummary: SessionSummary) => void;
   sessionDeleted: (sessionId: SessionId) => void;
   sessionStateChange: (sessionId: SessionId, state: AgentState) => void;
-  sessionError: (sessionId: SessionId, error: { message: string; details?: unknown }) => void;
+  sessionError: (
+    sessionId: SessionId,
+    error: { message: string; details?: unknown },
+  ) => void;
 }

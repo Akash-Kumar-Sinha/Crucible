@@ -19,10 +19,18 @@ import type {
 import type { Session } from "../session/session";
 
 function printBanner() {
-  console.log("\n╔══════════════════════════════════════════════════════════════════╗");
-  console.log("║               CRUCIBLE INTERACTIVE AGENT CLI                     ║");
-  console.log("║   Type your prompt below or '/help' for interactive commands.    ║");
-  console.log("╚══════════════════════════════════════════════════════════════════╝\n");
+  console.log(
+    "\n╔══════════════════════════════════════════════════════════════════╗",
+  );
+  console.log(
+    "║               CRUCIBLE INTERACTIVE AGENT CLI                     ║",
+  );
+  console.log(
+    "║   Type your prompt below or '/help' for interactive commands.    ║",
+  );
+  console.log(
+    "╚══════════════════════════════════════════════════════════════════╝\n",
+  );
 }
 
 function attachSessionEventVisualizer(session: Session) {
@@ -36,7 +44,9 @@ function attachSessionEventVisualizer(session: Session) {
 
   session.on("action", (actions) => {
     for (const a of actions) {
-      console.log(`\n\x1b[35m[Action -> Tool Call]:\x1b[0m \x1b[1m${a.name}\x1b[0m (id: ${a.id})`);
+      console.log(
+        `\n\x1b[35m[Action -> Tool Call]:\x1b[0m \x1b[1m${a.name}\x1b[0m (id: ${a.id})`,
+      );
       console.log(`  Arguments: ${JSON.stringify(a.arguments, null, 2)}`);
     }
   });
@@ -44,18 +54,28 @@ function attachSessionEventVisualizer(session: Session) {
   session.on("observation", (obs) => {
     for (const o of obs) {
       const color = o.status === "success" ? "\x1b[32m" : "\x1b[31m";
-      console.log(`\n${color}[Observation <- Tool Result]:\x1b[0m \x1b[1m${o.name}\x1b[0m (${o.status})`);
+      console.log(
+        `\n${color}[Observation <- Tool Result]:\x1b[0m \x1b[1m${o.name}\x1b[0m (${o.status})`,
+      );
       console.log(`  Output: ${JSON.stringify(o.output, null, 2)}`);
       if (o.error) console.log(`  \x1b[31mError: ${o.error}\x1b[0m`);
     }
   });
 
   session.on("done", (finalText) => {
-    console.log("\n═══════════════════════════════════════════════════════════════");
-    console.log("                        FINAL RESPONSE                         ");
-    console.log("═══════════════════════════════════════════════════════════════");
+    console.log(
+      "\n═══════════════════════════════════════════════════════════════",
+    );
+    console.log(
+      "                        FINAL RESPONSE                         ",
+    );
+    console.log(
+      "═══════════════════════════════════════════════════════════════",
+    );
     console.log(finalText);
-    console.log("═══════════════════════════════════════════════════════════════\n");
+    console.log(
+      "═══════════════════════════════════════════════════════════════\n",
+    );
   });
 
   session.on("error", (err) => {
@@ -77,7 +97,12 @@ async function runInteractiveRepl(session: Session, rl: readline.Interface) {
     const trimmed = userInput.trim();
     if (!trimmed) continue;
 
-    if (trimmed === "exit" || trimmed === "quit" || trimmed === "/exit" || trimmed === "/quit") {
+    if (
+      trimmed === "exit" ||
+      trimmed === "quit" ||
+      trimmed === "/exit" ||
+      trimmed === "/quit"
+    ) {
       console.log("Exiting Crucible CLI. Goodbye!");
       break;
     }
@@ -85,7 +110,9 @@ async function runInteractiveRepl(session: Session, rl: readline.Interface) {
     if (trimmed === "/help") {
       console.log("\nAvailable Commands:");
       console.log("  /help       - Show this help message");
-      console.log("  /history    - Display current message history in this session");
+      console.log(
+        "  /history    - Display current message history in this session",
+      );
       console.log("  /status     - Show session metadata and status");
       console.log("  /clear      - Start a fresh session conversation");
       console.log("  /exit, quit - Exit the interactive REPL\n");
@@ -96,7 +123,9 @@ async function runInteractiveRepl(session: Session, rl: readline.Interface) {
       console.log("\n--- Session Message History ---");
       const msgs = session.getMessages();
       for (const m of msgs) {
-        console.log(`[${m.role.toUpperCase()}]: ${m.content || "(tool call: " + JSON.stringify(m.toolCalls) + ")"}`);
+        console.log(
+          `[${m.role.toUpperCase()}]: ${m.content || "(tool call: " + JSON.stringify(m.toolCalls) + ")"}`,
+        );
       }
       console.log(`Total Messages: ${msgs.length}\n`);
       continue;
@@ -117,7 +146,10 @@ async function runInteractiveRepl(session: Session, rl: readline.Interface) {
     try {
       await session.prompt(trimmed);
     } catch (err: any) {
-      console.error("\x1b[31mTurn execution failed:\x1b[0m", err?.message || err);
+      console.error(
+        "\x1b[31mTurn execution failed:\x1b[0m",
+        err?.message || err,
+      );
     }
   }
 }
@@ -139,10 +171,12 @@ async function main() {
 
   if (apiKey) {
     provider = new OpenRouterProvider({
-      defaultModel: "nvidia/nemotron-3-nano-30b-a3b:free",
+      defaultModel: process.env.OPENROUTER_MODEL || "openrouter/free",
     });
   } else {
-    console.warn("\x1b[33m[Notice]: No OPENROUTER API key in .env. Running deterministic demo provider.\x1b[0m");
+    console.warn(
+      "\x1b[33m[Notice]: No OPENROUTER API key in .env. Running deterministic demo provider.\x1b[0m",
+    );
     class MockCliProvider implements ModelProvider {
       name = "mock_cli_provider";
       defaultModel = "demo-model";
@@ -191,11 +225,18 @@ async function main() {
     onHumanApprovalRequired: async (pendingCalls) => {
       console.log("\n\x1b[31;1m[SECURITY APPROVAL REQUIRED]\x1b[0m");
       for (const call of pendingCalls) {
-        console.log(`Tool: \x1b[1m${call.name}\x1b[0m | Args: ${JSON.stringify(call.arguments)}`);
+        console.log(
+          `Tool: \x1b[1m${call.name}\x1b[0m | Args: ${JSON.stringify(call.arguments)}`,
+        );
       }
       const answer = await rl.question("\nAuthorize this execution? [y/N]: ");
-      const approved = answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
-      return { approved, reason: approved ? undefined : "User denied permission." };
+      const approved =
+        answer.trim().toLowerCase() === "y" ||
+        answer.trim().toLowerCase() === "yes";
+      return {
+        approved,
+        reason: approved ? undefined : "User denied permission.",
+      };
     },
   });
 

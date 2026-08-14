@@ -19,7 +19,9 @@ class MockIsolatedProvider implements ModelProvider {
       if (lastMsg.content.includes("Calculate")) {
         return {
           thought: "Need to run math",
-          toolCalls: [{ id: "c_math", name: "calc", arguments: { expr: "100 + 200" } }],
+          toolCalls: [
+            { id: "c_math", name: "calc", arguments: { expr: "100 + 200" } },
+          ],
           finishReason: "tool_calls",
         };
       }
@@ -79,9 +81,18 @@ describe("Multi-Session Concurrency & Strict Isolation Test", () => {
       defaultTools: tools,
     });
 
-    const s1 = manager.createSession({ sessionId: "sess_math", title: "Math Session" });
-    const s2 = manager.createSession({ sessionId: "sess_time", title: "Time Session" });
-    const s3 = manager.createSession({ sessionId: "sess_geo", title: "Geography Session" });
+    const s1 = manager.createSession({
+      sessionId: "sess_math",
+      title: "Math Session",
+    });
+    const s2 = manager.createSession({
+      sessionId: "sess_time",
+      title: "Time Session",
+    });
+    const s3 = manager.createSession({
+      sessionId: "sess_geo",
+      title: "Geography Session",
+    });
 
     // Track states independently
     const states: Record<string, string[]> = {
@@ -113,20 +124,34 @@ describe("Multi-Session Concurrency & Strict Isolation Test", () => {
     // Verify Message Isolation: s1 has only math messages
     const msgs1 = s1.getMessages();
     expect(msgs1.length).toBe(4); // user prompt, assistant tool_call, tool response, assistant final
-    expect(msgs1.some((m) => m.content.includes("Calculate 100 + 200"))).toBe(true);
-    expect(msgs1.some((m) => m.content.includes("Time") || m.content.includes("Capital"))).toBe(false);
+    expect(msgs1.some((m) => m.content.includes("Calculate 100 + 200"))).toBe(
+      true,
+    );
+    expect(
+      msgs1.some(
+        (m) => m.content.includes("Time") || m.content.includes("Capital"),
+      ),
+    ).toBe(false);
 
     // Verify Message Isolation: s2 has only time messages
     const msgs2 = s2.getMessages();
     expect(msgs2.length).toBe(4); // user prompt, assistant tool_call, tool response, assistant final
     expect(msgs2.some((m) => m.content.includes("Time"))).toBe(true);
-    expect(msgs2.some((m) => m.content.includes("Calculate") || m.content.includes("Capital"))).toBe(false);
+    expect(
+      msgs2.some(
+        (m) => m.content.includes("Calculate") || m.content.includes("Capital"),
+      ),
+    ).toBe(false);
 
     // Verify Message Isolation: s3 has only geography messages
     const msgs3 = s3.getMessages();
     expect(msgs3.length).toBe(2); // user prompt, assistant final (no tool)
     expect(msgs3.some((m) => m.content.includes("Capital"))).toBe(true);
-    expect(msgs3.some((m) => m.content.includes("Calculate") || m.content.includes("Time"))).toBe(false);
+    expect(
+      msgs3.some(
+        (m) => m.content.includes("Calculate") || m.content.includes("Time"),
+      ),
+    ).toBe(false);
 
     // Verify Step History Isolation
     expect(s1.getHistory().length).toBe(2);

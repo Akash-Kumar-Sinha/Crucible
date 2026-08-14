@@ -3,16 +3,22 @@ import { ToolRegistry, calculatorTool, getCurrentTimeTool } from "../tools";
 import { OpenRouterProvider } from "../provider/openrouter";
 
 async function verifyConcurrentSessions() {
-  console.log("===============================================================");
-  console.log("  CRUCIBLE MULTI-SESSION ISOLATION & CONCURRENCY VERIFICATION  ");
-  console.log("===============================================================\n");
+  console.log(
+    "===============================================================",
+  );
+  console.log(
+    "  CRUCIBLE MULTI-SESSION ISOLATION & CONCURRENCY VERIFICATION  ",
+  );
+  console.log(
+    "===============================================================\n",
+  );
 
   const tools = new ToolRegistry()
     .register(calculatorTool)
     .register(getCurrentTimeTool);
 
   const provider = new OpenRouterProvider({
-    defaultModel: "nvidia/nemotron-3-nano-30b-a3b:free",
+    defaultModel: process.env.OPENROUTER_MODEL || "openrouter/free",
   });
 
   const manager = new SessionManager({
@@ -39,7 +45,10 @@ async function verifyConcurrentSessions() {
   });
 
   // 2. Track events and transitions per session
-  const sessionTraces: Record<string, { transitions: string[]; toolsUsed: string[]; thoughts: string[] }> = {
+  const sessionTraces: Record<
+    string,
+    { transitions: string[]; toolsUsed: string[]; thoughts: string[] }
+  > = {
     session_alpha: { transitions: [], toolsUsed: [], thoughts: [] },
     session_beta: { transitions: [], toolsUsed: [], thoughts: [] },
     session_gamma: { transitions: [], toolsUsed: [], thoughts: [] },
@@ -59,13 +68,19 @@ async function verifyConcurrentSessions() {
     session.on("action", (actions) => {
       for (const a of actions) {
         sessionTraces[session.id].toolsUsed.push(a.name);
-        console.log(`[${session.id}] Action [Tool: ${a.name}]:`, JSON.stringify(a.arguments));
+        console.log(
+          `[${session.id}] Action [Tool: ${a.name}]:`,
+          JSON.stringify(a.arguments),
+        );
       }
     });
 
     session.on("observation", (obs) => {
       for (const o of obs) {
-        console.log(`[${session.id}] Observation [${o.name}]:`, JSON.stringify(o.output));
+        console.log(
+          `[${session.id}] Observation [${o.name}]:`,
+          JSON.stringify(o.output),
+        );
       }
     });
   }
@@ -78,17 +93,35 @@ async function verifyConcurrentSessions() {
     sessionGamma.prompt("What is the capital of Japan? Do not use any tools."),
   ]);
 
-  console.log("\n===============================================================");
-  console.log("                      EXECUTION RESULTS                        ");
-  console.log("===============================================================");
-  console.log(`[Alpha Status]: ${sessionAlpha.getStatus()} | Response: ${resultAlpha.finalResponse} | Error: ${sessionAlpha.getContext().error?.message}`);
-  console.log(`[Beta Status]:  ${sessionBeta.getStatus()} | Response: ${resultBeta.finalResponse} | Error: ${sessionBeta.getContext().error?.message}`);
-  console.log(`[Gamma Status]: ${sessionGamma.getStatus()} | Response: ${resultGamma.finalResponse} | Error: ${sessionGamma.getContext().error?.message}`);
+  console.log(
+    "\n===============================================================",
+  );
+  console.log(
+    "                      EXECUTION RESULTS                        ",
+  );
+  console.log(
+    "===============================================================",
+  );
+  console.log(
+    `[Alpha Status]: ${sessionAlpha.getStatus()} | Response: ${resultAlpha.finalResponse} | Error: ${sessionAlpha.getContext().error?.message}`,
+  );
+  console.log(
+    `[Beta Status]:  ${sessionBeta.getStatus()} | Response: ${resultBeta.finalResponse} | Error: ${sessionBeta.getContext().error?.message}`,
+  );
+  console.log(
+    `[Gamma Status]: ${sessionGamma.getStatus()} | Response: ${resultGamma.finalResponse} | Error: ${sessionGamma.getContext().error?.message}`,
+  );
 
   // 4. Verify History & Message Isolation
-  console.log("\n===============================================================");
-  console.log("                   ISOLATION VERIFICATION                      ");
-  console.log("===============================================================");
+  console.log(
+    "\n===============================================================",
+  );
+  console.log(
+    "                   ISOLATION VERIFICATION                      ",
+  );
+  console.log(
+    "===============================================================",
+  );
 
   const msgsAlpha = sessionAlpha.getMessages();
   const msgsBeta = sessionBeta.getMessages();
@@ -99,23 +132,45 @@ async function verifyConcurrentSessions() {
   console.log(`Session Gamma Message Count: ${msgsGamma.length}`);
 
   // Alpha assertions: only math content, no time tool, no Japan query
-  const alphaHasMath = msgsAlpha.some((m) => m.content.includes("128 * 64") || m.content.includes("8192"));
-  const alphaHasTime = msgsAlpha.some((m) => m.name === "get_current_time" || m.content.includes("current time"));
-  const alphaHasJapan = msgsAlpha.some((m) => m.content.includes("Japan") || m.content.includes("Tokyo"));
+  const alphaHasMath = msgsAlpha.some(
+    (m) => m.content.includes("128 * 64") || m.content.includes("8192"),
+  );
+  const alphaHasTime = msgsAlpha.some(
+    (m) => m.name === "get_current_time" || m.content.includes("current time"),
+  );
+  const alphaHasJapan = msgsAlpha.some(
+    (m) => m.content.includes("Japan") || m.content.includes("Tokyo"),
+  );
 
   // Beta assertions: only time content, no math tool, no Japan query
-  const betaHasTime = msgsBeta.some((m) => m.name === "get_current_time" || m.content.includes("current time"));
-  const betaHasMath = msgsBeta.some((m) => m.name === "calculator" || m.content.includes("128 * 64"));
-  const betaHasJapan = msgsBeta.some((m) => m.content.includes("Japan") || m.content.includes("Tokyo"));
+  const betaHasTime = msgsBeta.some(
+    (m) => m.name === "get_current_time" || m.content.includes("current time"),
+  );
+  const betaHasMath = msgsBeta.some(
+    (m) => m.name === "calculator" || m.content.includes("128 * 64"),
+  );
+  const betaHasJapan = msgsBeta.some(
+    (m) => m.content.includes("Japan") || m.content.includes("Tokyo"),
+  );
 
   // Gamma assertions: only Japan query, no calculator, no time tool
-  const gammaHasJapan = msgsGamma.some((m) => m.content.includes("Japan") || m.content.includes("Tokyo"));
-  const gammaHasMath = msgsGamma.some((m) => m.name === "calculator" || m.content.includes("128 * 64"));
+  const gammaHasJapan = msgsGamma.some(
+    (m) => m.content.includes("Japan") || m.content.includes("Tokyo"),
+  );
+  const gammaHasMath = msgsGamma.some(
+    (m) => m.name === "calculator" || m.content.includes("128 * 64"),
+  );
   const gammaHasTime = msgsGamma.some((m) => m.name === "get_current_time");
 
-  console.log(`\n- Alpha math present: ${alphaHasMath} | Zero leakage of Beta/Gamma: ${!alphaHasTime && !alphaHasJapan}`);
-  console.log(`- Beta time present: ${betaHasTime} | Zero leakage of Alpha/Gamma: ${!betaHasMath && !betaHasJapan}`);
-  console.log(`- Gamma Japan present: ${gammaHasJapan} | Zero leakage of Alpha/Beta: ${!gammaHasMath && !gammaHasTime}`);
+  console.log(
+    `\n- Alpha math present: ${alphaHasMath} | Zero leakage of Beta/Gamma: ${!alphaHasTime && !alphaHasJapan}`,
+  );
+  console.log(
+    `- Beta time present: ${betaHasTime} | Zero leakage of Alpha/Gamma: ${!betaHasMath && !betaHasJapan}`,
+  );
+  console.log(
+    `- Gamma Japan present: ${gammaHasJapan} | Zero leakage of Alpha/Beta: ${!gammaHasMath && !gammaHasTime}`,
+  );
 
   const passed =
     alphaHasMath &&
@@ -132,7 +187,9 @@ async function verifyConcurrentSessions() {
     resultGamma.state === "done";
 
   if (passed) {
-    console.log("\n>>> SUCCESS: All 3 sessions executed concurrently with 100% strict state isolation and zero cross-talk! <<<");
+    console.log(
+      "\n>>> SUCCESS: All 3 sessions executed concurrently with 100% strict state isolation and zero cross-talk! <<<",
+    );
   } else {
     console.error("\n>>> FAILURE: Isolation check failed! <<<");
     process.exit(1);

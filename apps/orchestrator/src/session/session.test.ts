@@ -39,7 +39,9 @@ describe("Session Actor", () => {
     expect(session.title).toBe("Test Session");
     expect(session.getStatus()).toBe("idle");
     expect(session.getMessages().length).toBe(0);
-    expect(session.getMetadata().customMetadata).toEqual({ userId: "user_123" });
+    expect(session.getMetadata().customMetadata).toEqual({
+      userId: "user_123",
+    });
   });
 
   it("should emit events during Thought-Action-Observation lifecycle", async () => {
@@ -162,8 +164,14 @@ describe("SessionManager Multiton Registry", () => {
   it("should create, retrieve, list, and delete isolated sessions", () => {
     const manager = new SessionManager();
 
-    const sessA = manager.createSession({ sessionId: "sess_a", title: "Session A" });
-    const sessB = manager.createSession({ sessionId: "sess_b", title: "Session B" });
+    const sessA = manager.createSession({
+      sessionId: "sess_a",
+      title: "Session A",
+    });
+    const sessB = manager.createSession({
+      sessionId: "sess_b",
+      title: "Session B",
+    });
 
     expect(manager.count()).toBe(2);
     expect(manager.has("sess_a")).toBe(true);
@@ -187,11 +195,21 @@ describe("SessionManager Multiton Registry", () => {
   it("should ensure strict state isolation between concurrent sessions", async () => {
     const manager = new SessionManager();
 
-    const providerA = new MockProvider([{ content: "Response from Session A", finishReason: "stop" }]);
-    const providerB = new MockProvider([{ content: "Response from Session B", finishReason: "stop" }]);
+    const providerA = new MockProvider([
+      { content: "Response from Session A", finishReason: "stop" },
+    ]);
+    const providerB = new MockProvider([
+      { content: "Response from Session B", finishReason: "stop" },
+    ]);
 
-    const sessA = manager.createSession({ sessionId: "isolated_a", provider: providerA });
-    const sessB = manager.createSession({ sessionId: "isolated_b", provider: providerB });
+    const sessA = manager.createSession({
+      sessionId: "isolated_a",
+      provider: providerA,
+    });
+    const sessB = manager.createSession({
+      sessionId: "isolated_b",
+      provider: providerB,
+    });
 
     await Promise.all([
       sessA.prompt("Prompt for A"),
@@ -224,7 +242,9 @@ describe("SessionManager Multiton Registry", () => {
     const stateEvents: string[] = [];
 
     manager.on("sessionCreated", (summary) => createdEvents.push(summary.id));
-    manager.on("sessionStateChange", (id, state) => stateEvents.push(`${id}:${state}`));
+    manager.on("sessionStateChange", (id, state) =>
+      stateEvents.push(`${id}:${state}`),
+    );
 
     const sess = manager.createSession({ sessionId: "event_target" });
     expect(createdEvents).toEqual(["event_target"]);

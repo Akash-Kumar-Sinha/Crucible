@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { ToolRegistry } from "../tools";
 import { AgentLoop } from "../agent/loop";
-import { ENVELOPE_VERSION_V1, createToolCallV1 } from "@crucible/shared-schemas";
+import {
+  ENVELOPE_VERSION_V1,
+  createToolCallV1,
+} from "@crucible/shared-schemas";
 import type {
   ModelProvider,
   ModelRequest,
@@ -9,9 +12,13 @@ import type {
 } from "../provider/provider.interface";
 
 async function verifyToolValidationAndEnvelope() {
-  console.log("===============================================================");
+  console.log(
+    "===============================================================",
+  );
   console.log("    CRUCIBLE TOOL SCHEMA VALIDATION & ENVELOPE VERIFICATION   ");
-  console.log("===============================================================\n");
+  console.log(
+    "===============================================================\n",
+  );
 
   // 1. Register a dummy tool with strict parameter constraints
   const dummyToolSchema = z.object({
@@ -35,7 +42,9 @@ async function verifyToolValidationAndEnvelope() {
     description: "Process an order with strict schema validation constraints",
     parameters: dummyToolSchema,
     execute: async ({ orderId, quantity, priority }, ctx) => {
-      console.log(`[Tool Execution Handler] Processing ${orderId} (Quantity: ${quantity}, Priority: ${priority}) on session ${ctx.sessionId}`);
+      console.log(
+        `[Tool Execution Handler] Processing ${orderId} (Quantity: ${quantity}, Priority: ${priority}) on session ${ctx.sessionId}`,
+      );
       return {
         status: "PROCESSED",
         orderId,
@@ -51,9 +60,13 @@ async function verifyToolValidationAndEnvelope() {
   console.log(JSON.stringify(registered?.jsonSchema, null, 2));
 
   // 2. Test Case A: Valid Tool Call Arguments
-  console.log("\n---------------------------------------------------------------");
+  console.log(
+    "\n---------------------------------------------------------------",
+  );
   console.log("[2] Executing Tool Call with VALID arguments...");
-  console.log("---------------------------------------------------------------");
+  console.log(
+    "---------------------------------------------------------------",
+  );
 
   const validCall = createToolCallV1({
     callId: "call_valid_001",
@@ -82,20 +95,28 @@ async function verifyToolValidationAndEnvelope() {
     typeof validResultEnvelope.durationMs === "number" &&
     typeof validResultEnvelope.timestamp === "number";
 
-  console.log(`\nValid Result Envelope Check: ${validShapeCheck ? "PASS" : "FAIL"}`);
+  console.log(
+    `\nValid Result Envelope Check: ${validShapeCheck ? "PASS" : "FAIL"}`,
+  );
 
   // 3. Test Case B: Bad Arguments (Should FAIL validation explicitly)
-  console.log("\n---------------------------------------------------------------");
-  console.log("[3] Executing Tool Call with INVALID arguments (bad prefix, negative quantity, invalid enum)...");
-  console.log("---------------------------------------------------------------");
+  console.log(
+    "\n---------------------------------------------------------------",
+  );
+  console.log(
+    "[3] Executing Tool Call with INVALID arguments (bad prefix, negative quantity, invalid enum)...",
+  );
+  console.log(
+    "---------------------------------------------------------------",
+  );
 
   const badCall = createToolCallV1({
     callId: "call_invalid_002",
     toolName: "dummy_order_processor",
     input: {
       orderId: "BAD_PREFIX_123", // Does not start with "ORD-"
-      quantity: -10,             // Less than min 1
-      priority: "ultra_high",    // Not in enum ["low", "medium", "high"]
+      quantity: -10, // Less than min 1
+      priority: "ultra_high", // Not in enum ["low", "medium", "high"]
     },
   });
 
@@ -116,12 +137,20 @@ async function verifyToolValidationAndEnvelope() {
     badResultEnvelope.error?.message.includes("Invalid input parameters") &&
     badResultEnvelope.error?.details !== undefined;
 
-  console.log(`\nInvalid Parameter Validation Check: ${badShapeCheck ? "PASS" : "FAIL"}`);
+  console.log(
+    `\nInvalid Parameter Validation Check: ${badShapeCheck ? "PASS" : "FAIL"}`,
+  );
 
   // 4. Test Case C: End-to-End Loop with Model Triggering Dummy Tool
-  console.log("\n---------------------------------------------------------------");
-  console.log("[4] Feeding Thought-Action-Observation Loop with Dummy Tool Trigger...");
-  console.log("---------------------------------------------------------------");
+  console.log(
+    "\n---------------------------------------------------------------",
+  );
+  console.log(
+    "[4] Feeding Thought-Action-Observation Loop with Dummy Tool Trigger...",
+  );
+  console.log(
+    "---------------------------------------------------------------",
+  );
 
   class MockDummyProvider implements ModelProvider {
     name = "mock_dummy_provider";
@@ -132,7 +161,8 @@ async function verifyToolValidationAndEnvelope() {
       this.stepCount++;
       if (this.stepCount === 1) {
         return {
-          thought: "User requested order processing. I will invoke dummy_order_processor.",
+          thought:
+            "User requested order processing. I will invoke dummy_order_processor.",
           toolCalls: [
             {
               id: "call_loop_003",
@@ -149,7 +179,8 @@ async function verifyToolValidationAndEnvelope() {
       } else {
         return {
           thought: "Order processed successfully. Returning confirmation.",
-          content: "Order ORD-5555 processed successfully with 12 items on MEDIUM priority.",
+          content:
+            "Order ORD-5555 processed successfully with 12 items on MEDIUM priority.",
           finishReason: "stop",
         };
       }
@@ -162,8 +193,10 @@ async function verifyToolValidationAndEnvelope() {
     onStep: (step) => {
       console.log(`[Agent Step ${step.step}]`);
       if (step.thought) console.log(` - Thought: ${step.thought}`);
-      if (step.actions.length > 0) console.log(` - Actions:`, JSON.stringify(step.actions));
-      if (step.observations.length > 0) console.log(` - Observations:`, JSON.stringify(step.observations));
+      if (step.actions.length > 0)
+        console.log(` - Actions:`, JSON.stringify(step.actions));
+      if (step.observations.length > 0)
+        console.log(` - Observations:`, JSON.stringify(step.observations));
     },
   });
 
@@ -177,7 +210,9 @@ async function verifyToolValidationAndEnvelope() {
     loopResult.finalResponse?.includes("ORD-5555");
 
   if (validShapeCheck && badShapeCheck && loopPassed) {
-    console.log("\n>>> ALL VALIDATION & ENVELOPE SHAPE CHECKS PASSED SUCCESSFULLY! <<<");
+    console.log(
+      "\n>>> ALL VALIDATION & ENVELOPE SHAPE CHECKS PASSED SUCCESSFULLY! <<<",
+    );
   } else {
     console.error("\n>>> VERIFICATION FAILED! <<<");
     process.exit(1);

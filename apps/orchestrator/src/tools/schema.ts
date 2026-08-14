@@ -4,7 +4,9 @@ import type { JSONSchemaObject, JSONSchemaProperty } from "./types";
 /**
  * Type guard to check if an object is already a raw JSONSchemaObject
  */
-export function isJsonSchemaObject(schema: unknown): schema is JSONSchemaObject {
+export function isJsonSchemaObject(
+  schema: unknown,
+): schema is JSONSchemaObject {
   if (!schema || typeof schema !== "object") return false;
   return !("_def" in schema) && ("type" in schema || "properties" in schema);
 }
@@ -117,7 +119,9 @@ function describeZodField(schema: z.ZodTypeAny): JSONSchemaProperty {
   }
 
   if (unwrapped instanceof z.ZodUnion) {
-    const options = (unwrapped._def.options as z.ZodTypeAny[]).map(describeZodField);
+    const options = (unwrapped._def.options as z.ZodTypeAny[]).map(
+      describeZodField,
+    );
     const prop: JSONSchemaProperty = {
       type: options.map((o) => o.type).filter(Boolean) as string[],
     };
