@@ -3,6 +3,9 @@
 import * as React from "react";
 import type { SessionDetail } from "../api/orchestrator-client";
 import { MessageBubble } from "./MessageBubble";
+import { LiveOutput } from "./LiveOutput";
+import { SessionStreamClient } from "../api/stream-client";
+import { useSessionStore } from "../stores/session-store";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Send,
@@ -11,6 +14,7 @@ import {
   AlertCircle,
   Terminal,
   Cpu,
+  Radio,
 } from "lucide-react";
 
 interface ChatWindowProps {
@@ -32,13 +36,95 @@ export function ChatWindow({
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
+  const {
+    streamingThought,
+    streamingTokens,
+    activeToolCalls,
+    toolStdout,
+    toolStderr,
+    isStreamConnected,
+    setStreamConnected,
+    setStreamingThought,
+    appendStreamingTokens,
+    setActiveToolCalls,
+    appendToolStdout,
+    appendToolStderr,
+    clearStreamingState,
+    addMessageToCurrentSession,
+    setStatus,
+  } = useSessionStore();
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   React.useEffect(() => {
     scrollToBottom();
-  }, [session?.messages, sending]);
+  }, [session?.messages, sending, streamingTokens, toolStdout]);
+
+  // Set up real-time SSE stream subscription for the active session
+  React.useEffect(() => {
+    if (!session?.id) {
+      clearStreamingState();
+      return;
+    }
+
+    const client = new SessionStreamClient(session.id);
+    client.connect();
+
+    const unsubConn = client.onConnectionChange((connected) => {
+      setStreamConnected(connected);
+    });
+
+    const unsubToken = client.on("token", ({ delta }) => {
+      appendStreamingTokens(delta);
+    });
+
+    const unsubThought = client.on("thought", ({ thought }) => {
+      setStreamingThought(thought);
+    });
+
+    const unsubToolStart = client.on("tool_start", ({ toolCalls }) => {
+      setActiveToolCalls(toolCalls);
+    });
+
+    const unsubToolStdout = client.on("tool_stdout", ({ chunk }) => {
+      appendToolStdout(chunk);
+    });
+
+    const unsubToolStderr = client.on("tool_stderr", ({ chunk }) => {
+      appendToolStderr(chunk);
+    });
+
+    const unsubToolResult = client.on("tool_result", () => {
+      setActiveToolCalls([]);
+    });
+
+    const unsubStatus = client.on("status_change", ({ status }) => {
+      setStatus(status as any);
+      if (status === "done" || status === "idle") {
+        clearStreamingState();
+      }
+    });
+
+    const unsubDone = client.on("done", () => {
+      clearStreamingState();
+    });
+
+    return () => {
+      unsubConn();
+      unsubToken();
+      unsubThought();
+      unsubToolStart();
+      unsubToolStdout();
+      unsubToolStderr();
+      unsubToolResult();
+      unsubStatus();
+      unsubDone();
+      client.dispose();
+      setStreamConnected(false);
+    };
+  }, [session?.id]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -46,6 +132,7 @@ export function ChatWindow({
     if (!trimmed || sending) return;
 
     setInput("");
+    clearStreamingState();
     await onSendMessage(trimmed);
   };
 
@@ -234,6 +321,30 @@ export function ChatWindow({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Stream Connection Indicator */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              fontSize: "11px",
+              padding: "4px 8px",
+              borderRadius: "5px",
+              background: isStreamConnected
+                ? "rgba(34, 197, 94, 0.1)"
+                : "rgba(234, 179, 8, 0.1)",
+              border: `1px solid ${isStreamConnected ? "rgba(34, 197, 94, 0.25)" : "rgba(234, 179, 8, 0.25)"}`,
+              color: isStreamConnected ? "#22c55e" : "#eab308",
+              fontWeight: 600,
+            }}
+          >
+            <Radio
+              size={11}
+              className={session.status === "running" ? "animate-pulse" : ""}
+            />
+            <span>{isStreamConnected ? "STREAM ACTIVE" : "CONNECTING"}</span>
+          </div>
+
           <div
             style={{
               fontSize: "11px",
@@ -341,9 +452,20 @@ export function ChatWindow({
           ))
         )}
 
+        {/* Real-time Streaming Output Panel */}
+        <LiveOutput
+          streamingThought={streamingThought}
+          streamingTokens={streamingTokens}
+          activeToolCalls={activeToolCalls}
+          toolStdout={toolStdout}
+          toolStderr={toolStderr}
+          isConnected={isStreamConnected}
+          status={session.status as any}
+        />
+
         {/* Loading Indicator */}
         <AnimatePresence>
-          {sending && (
+          {sending && !streamingTokens && !toolStdout && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}

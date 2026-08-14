@@ -1,3 +1,4 @@
+import type { Server } from "bun";
 import { SessionManager } from "../session/session-manager";
 import { ToolRegistry } from "../tools/registry";
 import {
@@ -15,6 +16,11 @@ import {
   performLivenessCheck,
 } from "../observability/health";
 import { getErrorReporter } from "../observability/error-reporter";
+import {
+  SseStreamHandler,
+  WebSocketGateway,
+  type WsConnectionData,
+} from "../streaming";
 
 export interface HttpServerOptions {
   port?: number;
@@ -22,10 +28,16 @@ export interface HttpServerOptions {
   sessionManager?: SessionManager;
 }
 
-export function createHttpRouter(sessionManager: SessionManager) {
+export function createHttpRouter(
+  sessionManager: SessionManager,
+  sseHandler: SseStreamHandler = new SseStreamHandler(sessionManager),
+) {
   const handler = new SessionRouteHandler(sessionManager);
 
-  return async (req: Request): Promise<Response> => {
+  return async (
+    req: Request,
+    server?: Server<WsConnectionData>,
+  ): Promise<Response> => {
     const url = new URL(req.url);
     const method = req.method.toUpperCase();
     const pathname = url.pathname;
@@ -40,6 +52,21 @@ export function createHttpRouter(sessionManager: SessionManager) {
           "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
       });
+    }
+
+    // WebSocket upgrade endpoint
+    if ((pathname === "/ws" || pathname === "/api/ws") && server) {
+      const sessionId = url.searchParams.get("sessionId") || undefined;
+      const success = server.upgrade(req, {
+        data: {
+          sessionId,
+          subscribedSessions: sessionId ? new Set([sessionId]) : new Set(),
+          connectedAt: new Date(),
+        },
+      });
+      if (success) {
+        return new Response(null, { status: 101 });
+      }
     }
 
     // Liveness probe (/healthz or /livez)
@@ -57,9 +84,10 @@ export function createHttpRouter(sessionManager: SessionManager) {
       return handleReadyzRequest();
     }
 
-    // General health check
+    // General health check (includes streaming metrics)
     if (pathname === "/health" || pathname === "/api/health") {
       const liveness = performLivenessCheck();
+      const sseMetrics = sseHandler.getMetrics();
       return new Response(
         JSON.stringify({
           status: "ok",
@@ -67,6 +95,11 @@ export function createHttpRouter(sessionManager: SessionManager) {
           uptime: liveness.uptime,
           timestamp: liveness.timestamp,
           system: liveness.system,
+          streaming: {
+            activeSse: sseMetrics.activeSseConnections,
+            totalSseOpened: sseMetrics.totalSseConnectionsOpened,
+            droppedSse: sseMetrics.droppedSseConnections,
+          },
         }),
         {
           status: 200,
@@ -80,6 +113,13 @@ export function createHttpRouter(sessionManager: SessionManager) {
 
     // Normalize path to strip leading /api prefix if present
     const normalizedPath = pathname.replace(/^\/api/, "");
+
+    // Route: /sessions/:id/stream (Server-Sent Events)
+    const streamMatch = normalizedPath.match(/^\/sessions\/([^/]+)\/stream$/);
+    if (streamMatch) {
+      const sessionId = streamMatch[1];
+      return sseHandler.handleStreamRequest(sessionId, req);
+    }
 
     // GET /sessions or POST /sessions
     if (normalizedPath === "/sessions" || normalizedPath === "/sessions/") {
@@ -180,12 +220,40 @@ export function startHttpServer(options: HttpServerOptions = {}) {
   const errorReporter = getErrorReporter();
   errorReporter.attachToSessionManager(sessionManager);
 
-  const router = createHttpRouter(sessionManager);
+  const sseHandler = new SseStreamHandler(sessionManager);
+  const wsGateway = new WebSocketGateway(sessionManager);
 
-  const server = Bun.serve({
+  const router = createHttpRouter(sessionManager, sseHandler);
+
+  const server = Bun.serve<WsConnectionData>({
     port,
     hostname,
-    fetch: router,
+    fetch(req, srv) {
+      const url = new URL(req.url);
+      if (url.pathname === "/ws" || url.pathname === "/api/ws") {
+        const sessionId = url.searchParams.get("sessionId") || undefined;
+        const success = srv.upgrade(req, {
+          data: {
+            sessionId,
+            subscribedSessions: sessionId ? new Set([sessionId]) : new Set(),
+            connectedAt: new Date(),
+          },
+        });
+        if (success) return undefined;
+      }
+      return router(req, srv);
+    },
+    websocket: {
+      open(ws) {
+        wsGateway.handleOpen(ws);
+      },
+      message(ws, message) {
+        wsGateway.handleMessage(ws, message);
+      },
+      close(ws, code, reason) {
+        wsGateway.handleClose(ws, code, reason);
+      },
+    },
     error(err) {
       errorReporter.captureAgentError(err, { state: "server_unhandled" });
       return new Response(
@@ -208,7 +276,7 @@ export function startHttpServer(options: HttpServerOptions = {}) {
   });
 
   console.log(
-    `[Crucible Core] HTTP REST Server listening on http://${hostname}:${server.port}`,
+    `[Crucible Core] HTTP REST & Real-Time Streaming Server listening on http://${hostname}:${server.port}`,
   );
   return server;
 }

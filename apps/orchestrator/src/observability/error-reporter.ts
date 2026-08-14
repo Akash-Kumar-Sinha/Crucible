@@ -8,9 +8,14 @@ export interface AgentErrorContext {
   sessionId?: string;
   turnId?: number;
   state?: AgentState | string;
+  status?: string;
   toolName?: string;
   model?: string;
   correlationId?: string;
+  component?: string;
+  alert?: string;
+  code?: number;
+  reason?: string;
   extra?: Record<string, unknown>;
 }
 

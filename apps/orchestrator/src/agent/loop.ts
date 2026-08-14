@@ -21,6 +21,10 @@ export interface AgentLoopOptions {
     pendingCalls: ToolCall[],
   ) => Promise<boolean | { approved: boolean; reason?: string }>;
   onStep?: (record: StepRecord) => void;
+  onToken?: (delta: string) => void;
+  onThought?: (thought: string) => void;
+  onToolStdout?: (data: { toolCallId: string; chunk: string }) => void;
+  onToolStderr?: (data: { toolCallId: string; chunk: string }) => void;
 }
 
 export interface AgentLoopResult {
@@ -146,7 +150,10 @@ export class AgentLoop {
         return this.stateMachine.getState();
 
       case "awaiting_tool":
-        await stepAwaitingTool(this.stateMachine, this.tools);
+        await stepAwaitingTool(this.stateMachine, this.tools, {
+          onToolStdout: this.options.onToolStdout,
+          onToolStderr: this.options.onToolStderr,
+        });
         return this.stateMachine.getState();
 
       case "awaiting_human":

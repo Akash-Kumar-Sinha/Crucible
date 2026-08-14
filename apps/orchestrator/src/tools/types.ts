@@ -36,6 +36,8 @@ export interface ToolExecutionContext {
   sessionId: string;
   step: number;
   signal?: AbortSignal;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
   metadata?: Record<string, unknown>;
 }
 

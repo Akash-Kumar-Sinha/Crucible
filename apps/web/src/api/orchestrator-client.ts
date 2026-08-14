@@ -12,15 +12,28 @@ export interface SessionSummary {
   updatedAt: number;
 }
 
+export interface ToolCall {
+  id?: string;
+  toolCallId?: string;
+  name?: string;
+  toolName?: string;
+  arguments?: Record<string, unknown>;
+  args?: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  toolCallId?: string;
+  name?: string;
+  status?: string;
+  output?: unknown;
+  error?: string;
+}
+
 export interface AgentMessage {
   role: "user" | "assistant" | "system" | "tool";
   content?: string;
   thought?: string;
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    arguments: Record<string, unknown>;
-  }>;
+  toolCalls?: ToolCall[];
   toolCallId?: string;
   name?: string;
 }

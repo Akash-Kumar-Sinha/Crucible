@@ -14,6 +14,8 @@ export interface ExecutionRequest {
   image?: string;
   memoryLimitBytes?: number;
   cpuLimit?: number;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
 }
 
 /**

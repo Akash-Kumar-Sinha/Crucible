@@ -80,6 +80,10 @@ export class SessionManager extends EventEmitter {
     return this.sessions.get(id);
   }
 
+  getSession(id: SessionId): Session | undefined {
+    return this.sessions.get(id);
+  }
+
   getOrThrow(id: SessionId): Session {
     const session = this.sessions.get(id);
     if (!session) {

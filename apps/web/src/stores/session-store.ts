@@ -3,6 +3,7 @@ import type {
   AgentMessage,
   SessionDetail,
   SessionSummary,
+  ToolCall,
 } from "../api/orchestrator-client";
 
 export interface SessionStoreState {
@@ -13,6 +14,14 @@ export interface SessionStoreState {
   isSending: boolean;
   isLoading: boolean;
   error: string | null;
+
+  // Real-Time Streaming State
+  streamingThought: string;
+  streamingTokens: string;
+  activeToolCalls: ToolCall[];
+  toolStdout: string;
+  toolStderr: string;
+  isStreamConnected: boolean;
 
   // Actions
   setCurrentSessionId: (id: string | null) => void;
@@ -25,6 +34,15 @@ export interface SessionStoreState {
   setSending: (isSending: boolean) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
+
+  // Streaming Actions
+  setStreamingThought: (thought: string) => void;
+  appendStreamingTokens: (chunk: string) => void;
+  setActiveToolCalls: (calls: ToolCall[]) => void;
+  appendToolStdout: (chunk: string) => void;
+  appendToolStderr: (chunk: string) => void;
+  setStreamConnected: (connected: boolean) => void;
+  clearStreamingState: () => void;
   reset: () => void;
 }
 
@@ -36,6 +54,13 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
   isSending: false,
   isLoading: false,
   error: null,
+
+  streamingThought: "",
+  streamingTokens: "",
+  activeToolCalls: [],
+  toolStdout: "",
+  toolStderr: "",
+  isStreamConnected: false,
 
   setCurrentSessionId: (currentSessionId) => set({ currentSessionId }),
   setCurrentSession: (currentSession) =>
@@ -70,6 +95,24 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
   setSending: (isSending) => set({ isSending }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
+
+  setStreamingThought: (streamingThought) => set({ streamingThought }),
+  appendStreamingTokens: (chunk) =>
+    set((prev) => ({ streamingTokens: prev.streamingTokens + chunk })),
+  setActiveToolCalls: (activeToolCalls) => set({ activeToolCalls }),
+  appendToolStdout: (chunk) =>
+    set((prev) => ({ toolStdout: prev.toolStdout + chunk })),
+  appendToolStderr: (chunk) =>
+    set((prev) => ({ toolStderr: prev.toolStderr + chunk })),
+  setStreamConnected: (isStreamConnected) => set({ isStreamConnected }),
+  clearStreamingState: () =>
+    set({
+      streamingThought: "",
+      streamingTokens: "",
+      activeToolCalls: [],
+      toolStdout: "",
+      toolStderr: "",
+    }),
   reset: () =>
     set({
       currentSessionId: null,
@@ -78,5 +121,11 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       isSending: false,
       isLoading: false,
       error: null,
+      streamingThought: "",
+      streamingTokens: "",
+      activeToolCalls: [],
+      toolStdout: "",
+      toolStderr: "",
+      isStreamConnected: false,
     }),
 }));

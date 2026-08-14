@@ -44,6 +44,10 @@ export async function stepAwaitingModel(
 export async function stepAwaitingTool(
   stateMachine: AgentStateMachine,
   tools: ToolRegistry,
+  options: {
+    onToolStdout?: (data: { toolCallId: string; chunk: string }) => void;
+    onToolStderr?: (data: { toolCallId: string; chunk: string }) => void;
+  } = {},
 ): Promise<void> {
   const ctx = stateMachine.getContext();
   const pendingCalls = ctx.pendingToolCalls;
@@ -53,6 +57,10 @@ export async function stepAwaitingTool(
     const envelope = await tools.execute(call, {
       sessionId: ctx.sessionId,
       step: ctx.stepCount,
+      onStdout: (chunk) =>
+        options.onToolStdout?.({ toolCallId: call.id, chunk }),
+      onStderr: (chunk) =>
+        options.onToolStderr?.({ toolCallId: call.id, chunk }),
     });
 
     results.push({

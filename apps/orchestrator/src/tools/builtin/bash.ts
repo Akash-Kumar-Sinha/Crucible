@@ -40,6 +40,9 @@ export function createBashTool(
         cwd,
         timeoutMs,
         sessionId: ctx.sessionId,
+        signal: ctx.signal,
+        onStdout: ctx.onStdout,
+        onStderr: ctx.onStderr,
       });
 
       return {

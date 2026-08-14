@@ -51,6 +51,10 @@ export class Session extends EventEmitter {
       model: config.model,
       temperature: config.temperature,
       onHumanApprovalRequired: config.onHumanApprovalRequired,
+      onToken: (delta) => this.emit("token", delta),
+      onThought: (thought) => this.emit("thought", thought),
+      onToolStdout: (data) => this.emit("toolStdout", data),
+      onToolStderr: (data) => this.emit("toolStderr", data),
     });
 
     this.setupTransitionBridge();

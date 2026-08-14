@@ -81,15 +81,19 @@ export class LocalExecutor implements Executor {
       }
 
       child.stdout?.on("data", (data: Buffer) => {
+        const text = data.toString("utf8");
         if (stdout.length < this.maxBufferBytes) {
-          stdout += data.toString("utf8");
+          stdout += text;
         }
+        request.onStdout?.(text);
       });
 
       child.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString("utf8");
         if (stderr.length < this.maxBufferBytes) {
-          stderr += data.toString("utf8");
+          stderr += text;
         }
+        request.onStderr?.(text);
       });
 
       (child as any).on("error", (err: Error) => {
