@@ -39,6 +39,7 @@ pub struct ProcessExecutor<State = Unconfigured> {
     timeout: Option<Duration>,
     max_buffer_bytes: usize,
     cgroup_guard: Option<crucible_sandbox::CgroupGuard>,
+    overlay_guard: Option<crucible_sandbox::OverlayFsGuard>,
 }
 
 impl ProcessExecutor<Unconfigured> {
@@ -54,6 +55,7 @@ impl ProcessExecutor<Unconfigured> {
             timeout: None,
             max_buffer_bytes: 10 * 1024 * 1024, // 10MB default buffer
             cgroup_guard: None,
+            overlay_guard: None,
         }
     }
 
@@ -69,6 +71,7 @@ impl ProcessExecutor<Unconfigured> {
             timeout: self.timeout,
             max_buffer_bytes: self.max_buffer_bytes,
             cgroup_guard: self.cgroup_guard,
+            overlay_guard: self.overlay_guard,
         }
     }
 }
@@ -144,6 +147,18 @@ impl ProcessExecutor<Configured> {
     #[must_use]
     pub fn with_cgroup(mut self, guard: crucible_sandbox::CgroupGuard) -> Self {
         self.cgroup_guard = Some(guard);
+        self
+    }
+
+    /// Attaches an ephemeral OverlayFS copy-on-write filesystem to this execution.
+    ///
+    /// Sets the working directory to the merged view if not explicitly overridden.
+    #[must_use]
+    pub fn with_overlay(mut self, guard: crucible_sandbox::OverlayFsGuard) -> Self {
+        if self.cwd.is_none() {
+            self.cwd = Some(guard.merged_path().to_path_buf());
+        }
+        self.overlay_guard = Some(guard);
         self
     }
 
@@ -409,5 +424,38 @@ mod tests {
         assert_eq!(output.stdout, "cgroup_sandbox_process_success");
         // Ensure cgroup guard directory was torn down automatically upon Drop
         assert!(!guard_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_execution_with_overlayfs() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let lower_dir = temp_dir.path().join("base_repo");
+        std::fs::create_dir_all(&lower_dir).unwrap();
+        std::fs::write(lower_dir.join("initial.txt"), "hello_pristine").unwrap();
+
+        let overlay_manager =
+            crucible_sandbox::OverlayFsManager::new(temp_dir.path().join("overlays"));
+        let guard = overlay_manager
+            .create_overlay("proc_overlay", &[lower_dir.clone()])
+            .unwrap();
+        let overlay_instance_dir = guard.merged_path().parent().unwrap().to_path_buf();
+
+        let output = ProcessExecutor::new()
+            .command("sh")
+            .args([
+                "-c",
+                "echo 'mutated_in_sandbox' > new_file.txt && cat initial.txt",
+            ])
+            .with_overlay(guard)
+            .execute()
+            .await
+            .expect("Execution with overlay failed");
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "hello_pristine");
+        // Lowerdir must remain untouched
+        assert!(!lower_dir.join("new_file.txt").exists());
+        // Overlay instance directory must be cleaned up on Drop
+        assert!(!overlay_instance_dir.exists());
     }
 }

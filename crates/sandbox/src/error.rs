@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SandboxError {
-    #[error("I/O error during cgroup operation: {0}")]
+    #[error("I/O error during sandbox operation: {0}")]
     Io(#[from] std::io::Error),
 
     #[error("cgroup v2 is not mounted or available at '{path}'")]
@@ -31,4 +31,13 @@ pub enum SandboxError {
 
     #[error("cgroup pool exhausted (no available sandbox slots in bulkhead)")]
     PoolExhausted,
+
+    #[error("OverlayFS directory creation failed at '{path}': {reason}")]
+    OverlayDirectoryCreationFailed { path: String, reason: String },
+
+    #[error("OverlayFS mount failed for target '{path}': {reason}")]
+    OverlayMountFailed { path: String, reason: String },
+
+    #[error("OverlayFS unmount failed for target '{path}' (disk leak alert): {reason}")]
+    OverlayUnmountFailed { path: String, reason: String },
 }

@@ -53,17 +53,20 @@ describe("OpenRouter Free Tier Integration", () => {
       console.log("Final Response:", result.finalResponse);
     }
 
-    // Check if OpenRouter returned a daily rate limit / quota exhaustion
+    // Check if OpenRouter returned a daily rate limit / quota exhaustion or invalid auth in local test
     if (
       result.state === "error" &&
       result.error &&
       (result.error.includes("429") ||
+        result.error.includes("401") ||
+        result.error.includes("User not found") ||
+        result.error.includes("Unauthorized") ||
         result.error.includes("Rate limit exceeded") ||
         result.error.includes("free-models-per-day") ||
         result.error.includes("quota"))
     ) {
       console.warn(
-        `\x1b[33m[Notice] OpenRouter live model rate limit / daily quota reached for '${model}': ${result.error}\x1b[0m`,
+        `\x1b[33m[Notice] OpenRouter live model returned '${result.error}' for '${model}'. Ensure a valid OPENROUTER_API_KEY is configured in .env for live integration runs.\x1b[0m`,
       );
       expect(result.state).toBe("error");
       return;
