@@ -40,4 +40,16 @@ pub enum SandboxError {
 
     #[error("OverlayFS unmount failed for target '{path}' (disk leak alert): {reason}")]
     OverlayUnmountFailed { path: String, reason: String },
+
+    #[error("Network namespace creation failed for '{name}': {reason}")]
+    NetnsCreationFailed { name: String, reason: String },
+
+    #[error("Network namespace teardown failed for '{name}': {reason}")]
+    NetnsTeardownFailed { name: String, reason: String },
+
+    #[error("nftables rule application failed for table '{table}': {reason}")]
+    NftablesApplyFailed { table: String, reason: String },
+
+    #[error("CRITICAL SECURITY INCIDENT: Sandbox network policy enforcement failed: {message}")]
+    NetworkSecurityIncident { message: String },
 }

@@ -40,6 +40,7 @@ pub struct ProcessExecutor<State = Unconfigured> {
     max_buffer_bytes: usize,
     cgroup_guard: Option<crucible_sandbox::CgroupGuard>,
     overlay_guard: Option<crucible_sandbox::OverlayFsGuard>,
+    netns_guard: Option<crucible_sandbox::NetnsGuard>,
 }
 
 impl ProcessExecutor<Unconfigured> {
@@ -56,6 +57,7 @@ impl ProcessExecutor<Unconfigured> {
             max_buffer_bytes: 10 * 1024 * 1024, // 10MB default buffer
             cgroup_guard: None,
             overlay_guard: None,
+            netns_guard: None,
         }
     }
 
@@ -72,6 +74,7 @@ impl ProcessExecutor<Unconfigured> {
             max_buffer_bytes: self.max_buffer_bytes,
             cgroup_guard: self.cgroup_guard,
             overlay_guard: self.overlay_guard,
+            netns_guard: self.netns_guard,
         }
     }
 }
@@ -159,6 +162,13 @@ impl ProcessExecutor<Configured> {
             self.cwd = Some(guard.merged_path().to_path_buf());
         }
         self.overlay_guard = Some(guard);
+        self
+    }
+
+    /// Attaches an isolated network namespace and nftables egress policy to this execution.
+    #[must_use]
+    pub fn with_netns(mut self, guard: crucible_sandbox::NetnsGuard) -> Self {
+        self.netns_guard = Some(guard);
         self
     }
 
@@ -457,5 +467,26 @@ mod tests {
         assert!(!lower_dir.join("new_file.txt").exists());
         // Overlay instance directory must be cleaned up on Drop
         assert!(!overlay_instance_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn test_process_execution_with_netns_policy() {
+        let netns_manager = crucible_sandbox::NetnsManager::new();
+        let policy = crucible_sandbox::NetworkPolicy::deny_all()
+            .with_dns()
+            .with_allow_port(443, crucible_sandbox::NetworkProtocol::Tcp);
+
+        let guard = netns_manager.create_netns("proc_netns", policy).unwrap();
+
+        let output = ProcessExecutor::new()
+            .command("echo")
+            .arg("netns_isolated_execution")
+            .with_netns(guard)
+            .execute()
+            .await
+            .expect("Execution with netns failed");
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "netns_isolated_execution");
     }
 }
