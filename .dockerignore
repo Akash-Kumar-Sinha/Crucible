@@ -1,0 +1,30 @@
+# Dependencies & Build Artifacts
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+target/
+**/target/
+dist/
+**/dist/
+build/
+**/build/
+.turbo/
+**/.turbo/
+
+# Environment & Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Git & OS
+.git/
+.DS_Store
+Thumbs.db
+*.log
+
+# Prisma / DB
+*.db
+*.sqlite

@@ -55,6 +55,11 @@ Thumbs.db
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Docker & Local Containers
+.docker/
+docker-compose.override.yml
+*.override.yml
+
 # Agents & Instructions
 .agents
 AGENTS.md

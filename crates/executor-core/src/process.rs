@@ -226,16 +226,17 @@ impl ProcessExecutor<Configured> {
         })?;
 
         // Attach PID to cgroup sandbox if configured
-        if let Some(guard) = &self.cgroup_guard
-            && let Some(pid) = child.id()
-            && let Err(err) = guard.attach_pid(pid)
-        {
-            tracing::warn!(
-                pid = pid,
-                cgroup_id = %guard.id,
-                error = %err,
-                "Failed to attach process PID to cgroup sandbox"
-            );
+        if let Some(guard) = &self.cgroup_guard {
+            if let Some(pid) = child.id() {
+                if let Err(err) = guard.attach_pid(pid) {
+                    tracing::warn!(
+                        pid = pid,
+                        cgroup_id = %guard.id,
+                        error = %err,
+                        "Failed to attach process PID to cgroup sandbox"
+                    );
+                }
+            }
         }
 
         let mut stdout_pipe = child.stdout.take();

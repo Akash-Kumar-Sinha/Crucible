@@ -359,60 +359,60 @@ impl NetnsGuard {
             .args(["netns", "add", netns_name])
             .output();
 
-        if let Ok(out) = netns_create
-            && out.status.success()
-        {
-            // Bring up loopback inside namespace
-            let _ = Command::new("ip")
-                .args(["netns", "exec", netns_name, "ip", "link", "set", "lo", "up"])
-                .output();
+        if let Ok(out) = netns_create {
+            if out.status.success() {
+                // Bring up loopback inside namespace
+                let _ = Command::new("ip")
+                    .args(["netns", "exec", netns_name, "ip", "link", "set", "lo", "up"])
+                    .output();
 
-            // Apply nftables ruleset inside namespace
-            let nft_apply = Command::new("ip")
-                .args(["netns", "exec", netns_name, "nft", "-f", "-"])
-                .stdin(std::process::Stdio::piped())
-                .spawn();
+                // Apply nftables ruleset inside namespace
+                let nft_apply = Command::new("ip")
+                    .args(["netns", "exec", netns_name, "nft", "-f", "-"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn();
 
-            if let Ok(mut child) = nft_apply {
-                if let Some(mut stdin) = child.stdin.take() {
-                    use std::io::Write;
-                    let _ = stdin.write_all(ruleset.as_bytes());
+                if let Ok(mut child) = nft_apply {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        use std::io::Write;
+                        let _ = stdin.write_all(ruleset.as_bytes());
+                    }
+                    if let Ok(status) = child.wait() {
+                        if status.success() {
+                            return Ok(NetnsIsolationStrategy::IpNetns);
+                        }
+                    }
                 }
-                if let Ok(status) = child.wait()
-                    && status.success()
-                {
-                    return Ok(NetnsIsolationStrategy::IpNetns);
-                }
+
+                // If nftables application failed inside the newly created namespace, clean it up and report incident
+                let _ = Command::new("ip")
+                    .args(["netns", "del", netns_name])
+                    .output();
+                Self::report_security_incident(
+                    netns_name,
+                    "Failed to apply nftables ruleset inside created network namespace",
+                );
+                return Err(SandboxError::NetworkSecurityIncident {
+                    message: format!(
+                        "nftables policy enforcement failed for network namespace '{}'",
+                        netns_name
+                    ),
+                });
             }
-
-            // If nftables application failed inside the newly created namespace, clean it up and report incident
-            let _ = Command::new("ip")
-                .args(["netns", "del", netns_name])
-                .output();
-            Self::report_security_incident(
-                netns_name,
-                "Failed to apply nftables ruleset inside created network namespace",
-            );
-            return Err(SandboxError::NetworkSecurityIncident {
-                message: format!(
-                    "nftables policy enforcement failed for network namespace '{}'",
-                    netns_name
-                ),
-            });
         }
 
         // 2. Check if unshare --net is available
         let unshare_check = Command::new("unshare").args(["--net", "true"]).output();
 
-        if let Ok(out) = unshare_check
-            && out.status.success()
-        {
-            debug!(
-                target: "crucible::sandbox::netns",
-                netns = %netns_name,
-                "Unshare network isolation verified"
-            );
-            return Ok(NetnsIsolationStrategy::UnshareNet);
+        if let Ok(out) = unshare_check {
+            if out.status.success() {
+                debug!(
+                    target: "crucible::sandbox::netns",
+                    netns = %netns_name,
+                    "Unshare network isolation verified"
+                );
+                return Ok(NetnsIsolationStrategy::UnshareNet);
+            }
         }
 
         // 3. Fallback: Virtual Policy Simulation (for unprivileged dev & unit tests)
@@ -486,19 +486,19 @@ impl NetnsGuard {
                 .args(["netns", "del", &self.netns_name])
                 .output();
 
-            if let Ok(out) = del_res
-                && !out.status.success()
-            {
-                warn!(
-                    target: "crucible::sandbox::netns",
-                    alert = "CRUCIBLE_NETNS_TEARDOWN_FAILURE_ALERT",
-                    netns = %self.netns_name,
-                    "Failed to cleanly delete network namespace during teardown"
-                );
-                return Err(SandboxError::NetnsTeardownFailed {
-                    name: self.netns_name.clone(),
-                    reason: String::from_utf8_lossy(&out.stderr).to_string(),
-                });
+            if let Ok(out) = del_res {
+                if !out.status.success() {
+                    warn!(
+                        target: "crucible::sandbox::netns",
+                        alert = "CRUCIBLE_NETNS_TEARDOWN_FAILURE_ALERT",
+                        netns = %self.netns_name,
+                        "Failed to cleanly delete network namespace during teardown"
+                    );
+                    return Err(SandboxError::NetnsTeardownFailed {
+                        name: self.netns_name.clone(),
+                        reason: String::from_utf8_lossy(&out.stderr).to_string(),
+                    });
+                }
             }
         }
 
@@ -508,16 +508,16 @@ impl NetnsGuard {
 
 impl Drop for NetnsGuard {
     fn drop(&mut self) {
-        if self.is_active
-            && let Err(err) = self.teardown()
-        {
-            error!(
-                target: "crucible::sandbox::netns",
-                alert = "CRUCIBLE_NETNS_TEARDOWN_FAILURE_ALERT",
-                netns = %self.netns_name,
-                error = %err,
-                "Failed to teardown network namespace during drop/panic unwinding"
-            );
+        if self.is_active {
+            if let Err(err) = self.teardown() {
+                error!(
+                    target: "crucible::sandbox::netns",
+                    alert = "CRUCIBLE_NETNS_TEARDOWN_FAILURE_ALERT",
+                    netns = %self.netns_name,
+                    error = %err,
+                    "Failed to teardown network namespace during drop/panic unwinding"
+                );
+            }
         }
     }
 }

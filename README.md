@@ -91,24 +91,58 @@ flowchart TB
 
 ---
 
-## ⚡ Quick Start
+## ⚡ One-Command Self-Hosted Quickstart (Docker Compose)
+
+The easiest way to run the full Crucible stack locally (Orchestrator, Rust Executor, PostgreSQL, Redis, and Web UI) is via Docker Compose:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Akash-Kumar-Sinha/Crucible.git
+cd Crucible
+
+# 2. Copy the environment template and drop in your OpenRouter API key
+cp .env.example .env
+
+# 3. Launch all services in the background
+docker compose up --build -d
+
+# 4. Open the Web UI in your browser
+open http://localhost:3000
+```
+
+### Self-Hosted Service Stack & Health Checks
+
+Every service in `docker-compose.yml` includes automated Docker health checks to report real readiness:
+
+| Service | Port | Image / Source | Health Check Endpoint / Probe |
+| :--- | :--- | :--- | :--- |
+| **`web`** | `3000` | Next.js 15 UI (`infra/docker/web.Dockerfile`) | `GET http://localhost:3000/api/health` |
+| **`orchestrator`** | `4000` | TypeScript/Bun Harness (`infra/docker/orchestrator.Dockerfile`) | `GET http://localhost:4000/healthz` |
+| **`executor-grpc`** | `50051` | Rust Core (`infra/docker/executor-grpc.Dockerfile`) | `TCP :50051` (Tonic Health) |
+| **`postgres`** | `5432` | `postgres:16-alpine` | `pg_isready -U crucible -d crucible` |
+| **`redis`** | `6379` | `redis:7-alpine` | `redis-cli ping` |
+
+```bash
+# Check service health status
+docker compose ps
+
+# View live unified logs
+docker compose logs -f
+
+# Stop stack
+docker compose down
+```
+
+---
+
+## 🛠️ Local Development (Native Bun & Cargo)
 
 ### 1. Environment Setup
 
 Create a `.env` file in the project root:
 
 ```bash
-# LLM Provider Gateway
-OPENROUTER_API_KEY="your-openrouter-api-key"
-OPENROUTER_MODEL="nvidia/nemotron-3-nano-30b-a3b:free"
-
-# State & Session Persistence
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/crucible?schema=public"
-REDIS_URL="redis://127.0.0.1:6379"
-
-# Execution Mode (docker | local | grpc)
-CRUCIBLE_EXECUTOR="docker"
-CRUCIBLE_GRPC_ADDR="127.0.0.1:50051"
+cp .env.example .env
 ```
 
 ### 2. Install & Build
@@ -121,7 +155,6 @@ make build
 ### 3. Apply Database Migrations
 
 ```bash
-# Push schema or apply migrations via Prisma
 bun run --cwd apps/orchestrator prisma db push
 ```
 

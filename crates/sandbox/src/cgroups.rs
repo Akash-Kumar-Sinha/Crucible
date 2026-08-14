@@ -166,23 +166,23 @@ impl CgroupGuard {
 
         // Method A: cgroup.kill (Linux 5.14+)
         let kill_file = self.path.join("cgroup.kill");
-        if kill_file.exists()
-            && let Ok(mut f) = OpenOptions::new().write(true).open(&kill_file)
-        {
-            let _ = f.write_all(b"1\n");
-            return Ok(());
+        if kill_file.exists() {
+            if let Ok(mut f) = OpenOptions::new().write(true).open(&kill_file) {
+                let _ = f.write_all(b"1\n");
+                return Ok(());
+            }
         }
 
         // Method B: Fallback - Read cgroup.procs and signal PIDs
         let procs_file = self.path.join("cgroup.procs");
-        if procs_file.exists()
-            && let Ok(content) = fs::read_to_string(&procs_file)
-        {
-            for line in content.lines() {
-                if let Ok(pid) = line.trim().parse::<i32>() {
-                    let _ = std::process::Command::new("kill")
-                        .args(["-9", &pid.to_string()])
-                        .output();
+        if procs_file.exists() {
+            if let Ok(content) = fs::read_to_string(&procs_file) {
+                for line in content.lines() {
+                    if let Ok(pid) = line.trim().parse::<i32>() {
+                        let _ = std::process::Command::new("kill")
+                            .args(["-9", &pid.to_string()])
+                            .output();
+                    }
                 }
             }
         }
@@ -310,18 +310,18 @@ impl CgroupGuard {
 
 impl Drop for CgroupGuard {
     fn drop(&mut self) {
-        if self.is_active
-            && let Err(err) = self.teardown()
-        {
-            // Phase 8 / Phase 11 Extended: Dedicated high-priority alert for cgroup leaks
-            error!(
-                target: "crucible::sandbox::cgroups",
-                alert = "CRUCIBLE_CGROUP_TEARDOWN_FAILURE_ALERT",
-                cgroup_id = %self.id,
-                cgroup_path = %self.path.display(),
-                error = %err,
-                "CRITICAL RESOURCE LEAK ALERT: cgroup failed to teardown during drop/panic unwinding"
-            );
+        if self.is_active {
+            if let Err(err) = self.teardown() {
+                // Phase 8 / Phase 11 Extended: Dedicated high-priority alert for cgroup leaks
+                error!(
+                    target: "crucible::sandbox::cgroups",
+                    alert = "CRUCIBLE_CGROUP_TEARDOWN_FAILURE_ALERT",
+                    cgroup_id = %self.id,
+                    cgroup_path = %self.path.display(),
+                    error = %err,
+                    "CRITICAL RESOURCE LEAK ALERT: cgroup failed to teardown during drop/panic unwinding"
+                );
+            }
         }
     }
 }
@@ -363,11 +363,12 @@ fn detect_best_cgroup_base() -> PathBuf {
 fn get_current_uid() -> u32 {
     if let Ok(content) = fs::read_to_string("/proc/self/status") {
         for line in content.lines() {
-            if line.starts_with("Uid:")
-                && let Some(uid_val) = line.split_whitespace().nth(1)
-                && let Ok(uid) = uid_val.parse::<u32>()
-            {
-                return uid;
+            if line.starts_with("Uid:") {
+                if let Some(uid_val) = line.split_whitespace().nth(1) {
+                    if let Ok(uid) = uid_val.parse::<u32>() {
+                        return uid;
+                    }
+                }
             }
         }
     }

@@ -1,4 +1,4 @@
-import { type PrismaClient } from "../../generated/prisma";
+import { type PrismaClient } from "@prisma/client";
 import { getPrismaClient } from "./client";
 import { logger } from "../../observability/logger";
 import { getErrorReporter } from "../../observability/error-reporter";

@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 pub mod cgroups;
 pub mod error;
 pub mod netns;

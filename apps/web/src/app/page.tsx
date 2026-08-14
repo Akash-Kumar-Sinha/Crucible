@@ -6,9 +6,11 @@ import { orchestratorClient } from "../api/orchestrator-client";
 import { useSessionStore } from "../stores/session-store";
 import { SessionSidebar } from "../components/SessionSidebar";
 import { ChatWindow } from "../components/ChatWindow";
+import { SetupWizard } from "../components/SetupWizard";
 
 export default function HomePage() {
   const router = useRouter();
+  const [showFirstRunWizard, setShowFirstRunWizard] = React.useState(false);
   const sessions = useSessionStore((s) => s.sessions);
   const loading = useSessionStore((s) => s.isLoading);
   const setSessions = useSessionStore((s) => s.setSessions);
@@ -26,6 +28,13 @@ export default function HomePage() {
       // Auto-navigate to latest session if available
       if (list.length > 0) {
         router.push(`/session/${list[list.length - 1].id}`);
+      } else {
+        const hasKey =
+          typeof window !== "undefined" &&
+          Boolean(localStorage.getItem("crucible_api_key"));
+        if (!hasKey) {
+          setShowFirstRunWizard(true);
+        }
       }
     } catch (err: any) {
       setError(
@@ -91,6 +100,11 @@ export default function HomePage() {
         loading={loading}
       />
       <ChatWindow session={null} onSendMessage={async () => {}} error={error} />
+      <SetupWizard
+        isOpen={showFirstRunWizard}
+        onClose={() => setShowFirstRunWizard(false)}
+        isFirstRun={true}
+      />
     </div>
   );
 }

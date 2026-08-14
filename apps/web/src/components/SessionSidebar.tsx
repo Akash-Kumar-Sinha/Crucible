@@ -12,8 +12,10 @@ import {
   AlertCircle,
   X,
   Loader2,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
+import { SetupWizard } from "./SetupWizard";
 
 interface SessionSidebarProps {
   sessions: SessionSummary[];
@@ -32,6 +34,7 @@ export function SessionSidebar({
 }: SessionSidebarProps) {
   const [creating, setCreating] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [isSetupOpen, setIsSetupOpen] = React.useState(false);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -335,8 +338,16 @@ export function SessionSidebar({
         )}
       </div>
 
-      {/* Metrics Dashboard Navigation */}
-      <div style={{ padding: "8px 16px", borderTop: "1px solid #27272a" }}>
+      {/* Metrics & Setup Navigation */}
+      <div
+        style={{
+          padding: "8px 16px",
+          borderTop: "1px solid #27272a",
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+        }}
+      >
         <Link
           href="/metrics"
           style={{
@@ -370,6 +381,43 @@ export function SessionSidebar({
             OTel
           </span>
         </Link>
+
+        <button
+          type="button"
+          onClick={() => setIsSetupOpen(true)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 12px",
+            background: "#18181b",
+            border: "1px solid #27272a",
+            borderRadius: "6px",
+            fontSize: "12px",
+            color: "#e4e4e7",
+            cursor: "pointer",
+            textAlign: "left",
+            width: "100%",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Settings size={14} color="#a1a1aa" />
+            <span style={{ fontWeight: 500 }}>Setup & Credentials</span>
+          </div>
+          <span
+            style={{
+              fontSize: "10px",
+              fontFamily: "monospace",
+              color: "#a1a1aa",
+              background: "#27272a",
+              padding: "2px 5px",
+              borderRadius: "4px",
+            }}
+          >
+            Config
+          </span>
+        </button>
       </div>
 
       {/* System Status Footer */}
@@ -398,6 +446,8 @@ export function SessionSidebar({
           <span>Core Server: Port 4000</span>
         </div>
       </div>
+
+      <SetupWizard isOpen={isSetupOpen} onClose={() => setIsSetupOpen(false)} />
     </aside>
   );
 }

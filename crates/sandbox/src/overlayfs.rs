@@ -124,10 +124,10 @@ impl OverlayFsGuard {
             ])
             .output();
 
-        if let Ok(output) = native_status
-            && output.status.success()
-        {
-            return Ok((OverlayMountStrategy::NativeKernel, true));
+        if let Ok(output) = native_status {
+            if output.status.success() {
+                return Ok((OverlayMountStrategy::NativeKernel, true));
+            }
         }
 
         // 2. Try fuse-overlayfs if available
@@ -135,10 +135,10 @@ impl OverlayFsGuard {
             .args(["-o", options, &merged_dir.display().to_string()])
             .output();
 
-        if let Ok(output) = fuse_status
-            && output.status.success()
-        {
-            return Ok((OverlayMountStrategy::FuseOverlay, true));
+        if let Ok(output) = fuse_status {
+            if output.status.success() {
+                return Ok((OverlayMountStrategy::FuseOverlay, true));
+            }
         }
 
         // 3. Fallback: Virtual Copy-on-Write union directory
@@ -218,20 +218,22 @@ impl OverlayFsGuard {
         let mut unmounted = false;
 
         // Try standard umount
-        if let Ok(out) = Command::new("umount").arg(&self.merged_dir).output()
-            && out.status.success()
-        {
-            unmounted = true;
+        if let Ok(out) = Command::new("umount").arg(&self.merged_dir).output() {
+            if out.status.success() {
+                unmounted = true;
+            }
         }
 
         // Fallback: Lazy unmount (MNT_DETACH) if busy
-        if !unmounted
-            && let Ok(out) = Command::new("umount")
+        if !unmounted {
+            if let Ok(out) = Command::new("umount")
                 .args(["-l", &self.merged_dir.display().to_string()])
                 .output()
-            && out.status.success()
-        {
-            unmounted = true;
+            {
+                if out.status.success() {
+                    unmounted = true;
+                }
+            }
         }
 
         if !unmounted {
@@ -278,21 +280,21 @@ impl OverlayFsGuard {
                 std::thread::sleep(Duration::from_millis(15));
             }
 
-            if parent_instance_dir.exists()
-                && let Err(e) = fs::remove_dir_all(parent_instance_dir)
-            {
-                error!(
-                    target: "crucible::sandbox::overlayfs",
-                    alert = "CRUCIBLE_OVERLAYFS_UNMOUNT_FAILURE_ALERT",
-                    overlay_id = %self.id,
-                    path = %parent_instance_dir.display(),
-                    error = %e,
-                    "CRITICAL DISK LEAK ALERT: OverlayFS teardown failed to delete instance directory"
-                );
-                return Err(SandboxError::TeardownFailed {
-                    path: parent_instance_dir.display().to_string(),
-                    reason: e.to_string(),
-                });
+            if parent_instance_dir.exists() {
+                if let Err(e) = fs::remove_dir_all(parent_instance_dir) {
+                    error!(
+                        target: "crucible::sandbox::overlayfs",
+                        alert = "CRUCIBLE_OVERLAYFS_UNMOUNT_FAILURE_ALERT",
+                        overlay_id = %self.id,
+                        path = %parent_instance_dir.display(),
+                        error = %e,
+                        "CRITICAL DISK LEAK ALERT: OverlayFS teardown failed to delete instance directory"
+                    );
+                    return Err(SandboxError::TeardownFailed {
+                        path: parent_instance_dir.display().to_string(),
+                        reason: e.to_string(),
+                    });
+                }
             }
         }
 
@@ -308,17 +310,17 @@ impl OverlayFsGuard {
 
 impl Drop for OverlayFsGuard {
     fn drop(&mut self) {
-        if self.is_active
-            && let Err(err) = self.teardown()
-        {
-            error!(
-                target: "crucible::sandbox::overlayfs",
-                alert = "CRUCIBLE_OVERLAYFS_UNMOUNT_FAILURE_ALERT",
-                overlay_id = %self.id,
-                merged_path = %self.merged_dir.display(),
-                error = %err,
-                "CRITICAL DISK LEAK ALERT: OverlayFS failed to teardown during drop/panic unwinding"
-            );
+        if self.is_active {
+            if let Err(err) = self.teardown() {
+                error!(
+                    target: "crucible::sandbox::overlayfs",
+                    alert = "CRUCIBLE_OVERLAYFS_UNMOUNT_FAILURE_ALERT",
+                    overlay_id = %self.id,
+                    merged_path = %self.merged_dir.display(),
+                    error = %err,
+                    "CRITICAL DISK LEAK ALERT: OverlayFS failed to teardown during drop/panic unwinding"
+                );
+            }
         }
     }
 }

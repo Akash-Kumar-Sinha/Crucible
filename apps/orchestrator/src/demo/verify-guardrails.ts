@@ -218,8 +218,14 @@ async function verifyGuardrailsAndPolicyEngine() {
       (logger as any).error = originalLoggerError;
     }
 
-    if (failResult.action !== "block" || !alertFired || !capturedAlerts.includes("CRUCIBLE_GUARDRAIL_CHAIN_FAILURE_ALERT")) {
-      throw new Error(`Expected failClosed=block, alertFired=true, and CRUCIBLE_GUARDRAIL_CHAIN_FAILURE_ALERT`);
+    if (
+      failResult.action !== "block" ||
+      !alertFired ||
+      !capturedAlerts.includes("CRUCIBLE_GUARDRAIL_CHAIN_FAILURE_ALERT")
+    ) {
+      throw new Error(
+        `Expected failClosed=block, alertFired=true, and CRUCIBLE_GUARDRAIL_CHAIN_FAILURE_ALERT`,
+      );
     }
 
     console.log(
