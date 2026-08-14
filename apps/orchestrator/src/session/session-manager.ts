@@ -69,6 +69,7 @@ export class SessionManager extends EventEmitter {
       maxSteps: options.maxSteps || this.config.defaultMaxSteps,
       provider: options.provider || this.config.defaultProvider,
       tools: options.tools || this.config.defaultTools,
+      guardrails: options.guardrails || this.config.defaultGuardrails,
       metadata: options.metadata,
       onHumanApprovalRequired: options.onHumanApprovalRequired,
     });

@@ -382,6 +382,25 @@ export async function performReadinessCheck(
     }
   }
 
+  // 9. Guardrails & Policy Engine Check
+  const tGuard = performance.now();
+  try {
+    const { getDefaultGuardrailChain } = await import("../guardrails");
+    const chain = getDefaultGuardrailChain();
+    const policies = chain.getPolicies();
+    checks["guardrails_policy_engine"] = {
+      status: policies.length > 0 ? "ok" : "degraded",
+      latencyMs: Math.round(performance.now() - tGuard),
+      message: `${policies.length} active policies loaded (${policies.map((p) => p.name).join(", ")})`,
+    };
+  } catch (err: any) {
+    checks["guardrails_policy_engine"] = {
+      status: "failed",
+      latencyMs: Math.round(performance.now() - tGuard),
+      message: err.message,
+    };
+  }
+
   const response: HealthCheckResponse = {
     status: overallHealthy ? "healthy" : "degraded",
     service: "crucible-orchestrator",

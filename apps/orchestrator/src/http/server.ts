@@ -228,6 +228,17 @@ export function createHttpRouter(
       }
     }
 
+    // Route: /sessions/:id/approval
+    const approvalMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/approval$/,
+    );
+    if (approvalMatch) {
+      const sessionId = approvalMatch[1];
+      if (method === "POST") {
+        return handler.approveAction(sessionId, req);
+      }
+    }
+
     // Route: /sessions/:id
     const sessionMatch = normalizedPath.match(/^\/sessions\/([^/]+)$/);
     if (sessionMatch) {

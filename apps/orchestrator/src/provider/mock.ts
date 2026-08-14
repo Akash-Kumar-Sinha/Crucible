@@ -8,12 +8,28 @@ import type { ToolCall } from "../schema/envelope";
 export class MockModelProvider implements ModelProvider {
   readonly name = "mock";
   readonly defaultModel = "mock-agent";
+  private queuedResponses: ModelResponse[] = [];
+
+  setNextResponse(response: Partial<ModelResponse>): this {
+    this.queuedResponses.push({
+      content: response.content ?? "",
+      thought: response.thought,
+      toolCalls: response.toolCalls,
+      finishReason:
+        response.finishReason ?? (response.toolCalls ? "tool_calls" : "stop"),
+      usage: response.usage,
+    });
+    return this;
+  }
 
   async complete(request: ModelRequest): Promise<ModelResponse> {
+    if (this.queuedResponses.length > 0) {
+      return this.queuedResponses.shift()!;
+    }
+
     const messages = request.messages;
     const lastMessage = messages[messages.length - 1];
 
-    // If the last message was a tool observation, summarize the final answer
     if (lastMessage?.role === "tool") {
       const toolOutput = lastMessage.content;
       return {

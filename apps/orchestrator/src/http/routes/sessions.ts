@@ -255,6 +255,77 @@ export class SessionRouteHandler {
     }
   }
 
+  async approveAction(sessionId: string, req: Request): Promise<Response> {
+    const t0 = performance.now();
+    const session = this.sessionManager.get(sessionId);
+    if (!session) {
+      logger.warn(
+        { sessionId },
+        "Cannot submit approval for non-existent session",
+      );
+      return this.errorResponse(
+        "SESSION_NOT_FOUND",
+        `Session '${sessionId}' was not found.`,
+        404,
+        { sessionId },
+      );
+    }
+
+    let body: {
+      approved?: boolean;
+      reason?: string;
+      toolCallId?: string;
+      resume?: boolean;
+    } = {};
+
+    try {
+      body = await req.json();
+    } catch {
+      return this.errorResponse(
+        "INVALID_JSON",
+        "Request body must be valid JSON.",
+        400,
+      );
+    }
+
+    try {
+      const isApproved = body.approved !== false;
+      let nextState;
+      if (isApproved) {
+        nextState = session.approve(body.toolCallId);
+      } else {
+        nextState = session.reject(body.reason, body.toolCallId);
+      }
+
+      if (body.resume !== false) {
+        session.resume().catch((err) => {
+          logger.error(
+            { err, sessionId },
+            "[Session] Failed to resume execution after human decision",
+          );
+        });
+      }
+
+      const durationMs = Math.round(performance.now() - t0);
+      return this.jsonResponse(
+        {
+          sessionId,
+          action: isApproved ? "approved" : "rejected",
+          state: nextState,
+          status: session.getStatus(),
+          durationMs,
+        },
+        200,
+      );
+    } catch (err: any) {
+      return this.errorResponse(
+        "APPROVAL_FAILED",
+        err.message || "Failed to process human approval decision",
+        400,
+      );
+    }
+  }
+
   async deleteSession(sessionId: string): Promise<Response> {
     const t0 = performance.now();
     const deleted = this.sessionManager.delete(sessionId);

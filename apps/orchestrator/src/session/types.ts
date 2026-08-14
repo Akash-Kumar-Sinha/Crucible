@@ -8,6 +8,7 @@ import type { AgentContext, AgentState } from "../agent/state-machine/types";
 import type { ModelProvider } from "../provider/provider.interface";
 import type { ToolRegistry } from "../tools/registry";
 import type { AgentLoopResult } from "../agent/loop";
+import type { GuardrailChain } from "../guardrails/chain";
 
 export type SessionId = string;
 
@@ -23,6 +24,7 @@ export interface SessionConfig {
   maxSteps?: number;
   provider?: ModelProvider;
   tools?: ToolRegistry;
+  guardrails?: GuardrailChain;
   metadata?: Record<string, unknown>;
   onHumanApprovalRequired?: (
     pendingCalls: ToolCall[],
@@ -69,6 +71,7 @@ export type CreateSessionOptions = SessionConfig;
 export interface SessionManagerConfig {
   defaultProvider?: ModelProvider;
   defaultTools?: ToolRegistry;
+  defaultGuardrails?: GuardrailChain;
   defaultSystemPrompt?: string;
   defaultMaxSteps?: number;
   defaultModel?: string;

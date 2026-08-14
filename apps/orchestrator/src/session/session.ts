@@ -48,6 +48,7 @@ export class Session extends EventEmitter {
       sessionId: this.id,
       provider: config.provider,
       tools: config.tools,
+      guardrails: config.guardrails,
       systemPrompt: config.systemPrompt,
       maxSteps: config.maxSteps,
       model: config.model,
@@ -271,6 +272,56 @@ export class Session extends EventEmitter {
 
   async step(): Promise<AgentState> {
     return this.loop.step();
+  }
+
+  async resume(): Promise<AgentLoopResult> {
+    const result = await this.loop.resume();
+
+    if (result.state === "done") {
+      this.setStatus("done");
+      if (result.finalResponse) {
+        const assistantMessage: AgentMessage = {
+          role: "assistant",
+          content: result.finalResponse,
+        };
+        this.emit("message", assistantMessage);
+        this.emit("done", result.finalResponse, result);
+      }
+      this.emit("turnCompleted", {
+        turnNumber: this.turnCount,
+        thought: result.history[result.history.length - 1]?.thought,
+        modelOutput: result.finalResponse,
+        history: result.history,
+      });
+    } else if (result.state === "error") {
+      this.setStatus("error");
+      const errorMsg = result.error || "Session execution encountered an error";
+      const assistantErrorMessage: AgentMessage = {
+        role: "assistant",
+        content: `⚠️ **Execution Error**: ${errorMsg}`,
+      };
+      this.loop.getContext().messages.push(assistantErrorMessage);
+      this.emit("message", assistantErrorMessage);
+      this.emit("error", { message: errorMsg });
+      this.emit("turnCompleted", {
+        turnNumber: this.turnCount,
+        error: errorMsg,
+        history: result.history,
+      });
+    } else if (result.state === "awaiting_human") {
+      this.setStatus("awaiting_human");
+    }
+
+    return result;
+  }
+
+  getGuardrails() {
+    return this.loop.getGuardrails();
+  }
+
+  setGuardrails(guardrails: any) {
+    this.loop.setGuardrails(guardrails);
+    return this;
   }
 
   approve(toolCallId?: string): AgentState {

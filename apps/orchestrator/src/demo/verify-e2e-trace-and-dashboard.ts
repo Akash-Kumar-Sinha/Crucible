@@ -196,11 +196,15 @@ async function verifyE2eTraceAndDashboard() {
       "============================================================\n",
     );
   } finally {
-    server.stop();
+    server.stop(true);
   }
 }
 
-verifyE2eTraceAndDashboard().catch((err) => {
-  console.error("Verification failed with error:", err);
-  process.exit(1);
-});
+verifyE2eTraceAndDashboard()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("Verification failed with error:", err);
+    process.exit(1);
+  });

@@ -1,4 +1,4 @@
-import { type ToolCall, type StepRecord } from "../schema/envelope";
+import type { ToolCall, StepRecord } from "../schema/envelope";
 import type { ModelProvider } from "../provider/provider.interface";
 import { OpenRouterProvider } from "../provider/openrouter";
 import { ToolRegistry } from "../tools/registry";
@@ -9,11 +9,13 @@ import {
   type TransitionListener,
 } from "./state-machine";
 import { stepAwaitingModel, stepAwaitingTool } from "./stepper";
+import { GuardrailChain, getDefaultGuardrailChain } from "../guardrails";
 
 export interface AgentLoopOptions {
   sessionId?: string;
   provider?: ModelProvider;
   tools?: ToolRegistry;
+  guardrails?: GuardrailChain;
   systemPrompt?: string;
   maxSteps?: number;
   model?: string;
@@ -39,6 +41,7 @@ export interface AgentLoopResult {
 export class AgentLoop {
   private provider: ModelProvider;
   private tools: ToolRegistry;
+  private guardrails: GuardrailChain;
   private stateMachine: AgentStateMachine;
   private options: AgentLoopOptions;
   private stepListenerAttached = false;
@@ -47,6 +50,7 @@ export class AgentLoop {
     this.options = options;
     this.provider = options.provider || new OpenRouterProvider();
     this.tools = options.tools || new ToolRegistry();
+    this.guardrails = options.guardrails || getDefaultGuardrailChain();
     this.stateMachine = new AgentStateMachine({
       sessionId: options.sessionId,
       systemPrompt: options.systemPrompt,
@@ -144,6 +148,39 @@ export class AgentLoop {
     }
   }
 
+  async resume(): Promise<AgentLoopResult> {
+    while (true) {
+      const state = this.stateMachine.getState();
+
+      if (state === "done" || state === "error") {
+        const ctx = this.stateMachine.getContext();
+        return {
+          state,
+          finalResponse: ctx.finalResponse,
+          history: ctx.history,
+          context: ctx,
+          error: ctx.error?.message,
+        };
+      }
+
+      if (state === "awaiting_human") {
+        const ctx = this.stateMachine.getContext();
+        if (this.options.onHumanApprovalRequired) {
+          await this.handleHumanApprovalDecision(ctx.pendingHumanApprovals);
+          continue;
+        }
+
+        return {
+          state: "awaiting_human",
+          history: ctx.history,
+          context: ctx,
+        };
+      }
+
+      await this.step();
+    }
+  }
+
   async step(): Promise<AgentState> {
     const currentState = this.stateMachine.getState();
 
@@ -152,11 +189,13 @@ export class AgentLoop {
         await stepAwaitingModel(this.stateMachine, this.provider, this.tools, {
           model: this.options.model,
           temperature: this.options.temperature,
+          guardrails: this.guardrails,
         });
         return this.stateMachine.getState();
 
       case "awaiting_tool":
         await stepAwaitingTool(this.stateMachine, this.tools, {
+          guardrails: this.guardrails,
           onToolStdout: this.options.onToolStdout,
           onToolStderr: this.options.onToolStderr,
         });
@@ -167,6 +206,15 @@ export class AgentLoop {
       case "error":
         return currentState;
     }
+  }
+
+  getGuardrails(): GuardrailChain {
+    return this.guardrails;
+  }
+
+  setGuardrails(guardrails: GuardrailChain): this {
+    this.guardrails = guardrails;
+    return this;
   }
 
   approve(toolCallId?: string): AgentState {

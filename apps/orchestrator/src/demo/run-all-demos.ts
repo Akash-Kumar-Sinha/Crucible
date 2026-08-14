@@ -30,6 +30,11 @@ const demos: DemoSuiteItem[] = [
     args: ["apps/orchestrator/src/demo/verify-e2e-trace-and-dashboard.ts"],
   },
   {
+    name: "Guardrails & Policy Engine (Human Checkpoints & Resource Budgets)",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-guardrails.ts"],
+  },
+  {
     name: "Rust Sandboxed Process Execution & Isolation Engine",
     command: "cargo",
     args: ["run", "-p", "executor-core", "--bin", "verify_core"],
