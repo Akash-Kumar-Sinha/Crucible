@@ -230,6 +230,7 @@ describe("Health Check API Pattern", () => {
     expect(result.body.checks?.["openrouter_gateway"].status).toBe("ok");
     expect(result.body.checks?.["execution_engine"].status).toBe("ok");
     expect(result.body.checks?.["docker_daemon"]).toBeDefined();
+    expect(result.body.checks?.["rust_grpc_executor"]).toBeDefined();
     expect(result.body.checks?.["disk_workspace"].status).toBe("ok");
   });
 

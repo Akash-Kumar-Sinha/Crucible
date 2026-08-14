@@ -1,6 +1,7 @@
 import { promises as fs, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as net from "node:net";
 import type Docker from "dockerode";
 import type { Executor } from "../execution/executor.interface";
 import type { OpenRouterProvider } from "../provider/openrouter";
@@ -27,6 +28,7 @@ export interface HealthCheckResponse {
     pid: number;
     runtime: string;
     dockerSocketPresent?: boolean;
+    grpcStatus?: "online" | "down";
   };
   checks?: Record<string, DependencyCheck>;
 }
@@ -35,11 +37,49 @@ export interface ReadinessCheckOptions {
   provider?: OpenRouterProvider;
   executor?: Executor;
   docker?: Docker;
+  grpcAddress?: string;
   checkOpenRouter?: () => Promise<boolean>;
   checkExecutor?: () => Promise<boolean>;
   checkDocker?: () => Promise<boolean>;
+  checkGrpc?: () => Promise<boolean>;
   checkDisk?: () => Promise<boolean>;
   timeoutMs?: number;
+}
+
+export async function pingTcpPort(
+  host: string,
+  port: number,
+  timeoutMs: number = 1000,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let resolved = false;
+
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => {
+      resolved = true;
+      socket.destroy();
+      resolve(true);
+    });
+
+    socket.once("timeout", () => {
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        resolve(false);
+      }
+    });
+
+    socket.once("error", () => {
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        resolve(false);
+      }
+    });
+
+    socket.connect(port, host);
+  });
 }
 
 export function performLivenessCheck(): HealthCheckResponse {
@@ -204,7 +244,44 @@ export async function performReadinessCheck(
     };
   }
 
-  // 5. Disk Workspace Check
+  // 5. Rust gRPC Executor Probe
+  const checkGrpcFn =
+    options.checkGrpc ||
+    (async () => {
+      const addr =
+        options.grpcAddress ||
+        process.env.CRUCIBLE_GRPC_ADDR ||
+        "127.0.0.1:50051";
+      const [host, portStr] = addr.split(":");
+      const port = Number.parseInt(portStr || "50051", 10);
+      return pingTcpPort(host || "127.0.0.1", port, 800);
+    });
+
+  const tGrpc = performance.now();
+  try {
+    const grpcOk = await checkGrpcFn();
+    checks["rust_grpc_executor"] = {
+      status: grpcOk ? "ok" : "degraded",
+      latencyMs: Math.round(performance.now() - tGrpc),
+      message: grpcOk
+        ? "Rust gRPC executor reachable"
+        : "Rust gRPC executor service unreachable",
+    };
+    if (
+      !grpcOk &&
+      (process.env.CRUCIBLE_EXECUTOR === "grpc" || options.grpcAddress)
+    ) {
+      overallHealthy = false;
+    }
+  } catch (err: any) {
+    checks["rust_grpc_executor"] = {
+      status: "degraded",
+      latencyMs: Math.round(performance.now() - tGrpc),
+      message: err.message,
+    };
+  }
+
+  // 6. Disk Workspace Check
   const checkDiskFn =
     options.checkDisk ||
     (async () => {
@@ -247,8 +324,17 @@ export async function performReadinessCheck(
   };
 }
 
-export function handleHealthzRequest(): Response {
+export async function handleHealthzRequest(): Promise<Response> {
   const liveness = performLivenessCheck();
+  const addr = process.env.CRUCIBLE_GRPC_ADDR || "127.0.0.1:50051";
+  const [host, portStr] = addr.split(":");
+  const port = Number.parseInt(portStr || "50051", 10);
+  const isGrpcOnline = await pingTcpPort(host || "127.0.0.1", port, 200);
+
+  if (liveness.system) {
+    liveness.system.grpcStatus = isGrpcOnline ? "online" : "down";
+  }
+
   return new Response(JSON.stringify(liveness), {
     status: liveness.status === "healthy" ? 200 : 500,
     headers: {

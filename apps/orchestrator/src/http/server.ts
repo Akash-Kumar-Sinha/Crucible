@@ -7,7 +7,7 @@ import {
   readFileTool,
 } from "../tools/builtin";
 import { OpenRouterProvider, MockModelProvider } from "../provider";
-import { LocalExecutor, DockerExecutor } from "../execution";
+import { LocalExecutor, DockerExecutor, GrpcExecutor } from "../execution";
 import { SessionRouteHandler } from "./routes/sessions";
 import {
   handleHealthzRequest,
@@ -49,7 +49,7 @@ export function createHttpRouter(sessionManager: SessionManager) {
       pathname === "/api/healthz" ||
       pathname === "/api/livez"
     ) {
-      return handleHealthzRequest();
+      return await handleHealthzRequest();
     }
 
     // Readiness probe (/readyz)
@@ -135,17 +135,26 @@ export function createHttpRouter(sessionManager: SessionManager) {
 }
 
 export function startHttpServer(options: HttpServerOptions = {}) {
-  const port = options.port ?? 4000;
-  const hostname = options.hostname ?? "0.0.0.0";
+  const port = options.port ?? Number(process.env.PORT || 4000);
+  const hostname = options.hostname ?? process.env.HOST ?? "0.0.0.0";
 
   let sessionManager = options.sessionManager;
   if (!sessionManager) {
     const localExecutor = new LocalExecutor();
-    const dockerExecutor = new DockerExecutor({ fallbackExecutor: localExecutor });
+    const dockerExecutor = new DockerExecutor({
+      fallbackExecutor: localExecutor,
+    });
+    const grpcExecutor = new GrpcExecutor({
+      fallbackExecutor: dockerExecutor,
+    });
+
+    const executorMode = process.env.CRUCIBLE_EXECUTOR || "docker";
     const executor =
-      process.env.CRUCIBLE_EXECUTOR === "local"
-        ? localExecutor
-        : dockerExecutor;
+      executorMode === "grpc"
+        ? grpcExecutor
+        : executorMode === "local"
+          ? localExecutor
+          : dockerExecutor;
     const tools = new ToolRegistry()
       .register(calculatorTool)
       .register(getCurrentTimeTool)

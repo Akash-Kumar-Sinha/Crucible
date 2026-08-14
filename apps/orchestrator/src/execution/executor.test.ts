@@ -4,7 +4,8 @@ import {
   DockerExecutor,
   DockerImageFactory,
   DockerContainerConfigBuilder,
-} from "./docker-executor";
+  GrpcExecutor,
+} from "./";
 import { createBashTool } from "../tools/builtin/bash";
 import { getErrorReporter } from "../observability/error-reporter";
 
@@ -78,21 +79,33 @@ describe("DockerImageFactory (Factory Pattern)", () => {
     const factory = new DockerImageFactory();
 
     expect(factory.resolveImage("node")).toBe("crucible-sandbox-node:latest");
-    expect(factory.resolveImage("typescript")).toBe("crucible-sandbox-node:latest");
-    expect(factory.resolveImage("python")).toBe("crucible-sandbox-python:latest");
+    expect(factory.resolveImage("typescript")).toBe(
+      "crucible-sandbox-node:latest",
+    );
+    expect(factory.resolveImage("python")).toBe(
+      "crucible-sandbox-python:latest",
+    );
     expect(factory.resolveImage("rust")).toBe("crucible-sandbox-rust:latest");
     expect(factory.resolveImage("bash")).toBe("crucible-sandbox-node:latest");
-    expect(factory.resolveImage(undefined, "calculator")).toBe("crucible-sandbox-node:latest");
+    expect(factory.resolveImage(undefined, "calculator")).toBe(
+      "crucible-sandbox-node:latest",
+    );
   });
 
   it("should prioritize explicit image overrides", () => {
     const factory = new DockerImageFactory();
-    const explicit = factory.resolveImage("python", undefined, "custom-python:3.12");
+    const explicit = factory.resolveImage(
+      "python",
+      undefined,
+      "custom-python:3.12",
+    );
     expect(explicit).toBe("custom-python:3.12");
   });
 
   it("should allow registering custom image mappings", () => {
-    const factory = new DockerImageFactory({ go: "crucible-sandbox-go:latest" });
+    const factory = new DockerImageFactory({
+      go: "crucible-sandbox-go:latest",
+    });
     expect(factory.resolveImage("go")).toBe("crucible-sandbox-go:latest");
 
     factory.registerMapping("ruby", "crucible-sandbox-ruby:latest");
@@ -185,6 +198,40 @@ describe("DockerExecutor (Docker Tool Execution & Telemetry)", () => {
     const metrics = reporter.getMetrics();
     expect(metrics.totalErrors).toBe(1);
     expect(metrics.containerFailuresCount).toBe(1);
+  });
+});
+
+describe("GrpcExecutor (Rust gRPC IPC & Telemetry)", () => {
+  it("should have correct executor identity", () => {
+    const grpcExec = new GrpcExecutor({ address: "127.0.0.1:59999" });
+    expect(grpcExec.name).toBe("rust_grpc");
+    grpcExec.close();
+  });
+
+  it("should report availability false when gRPC server is unreachable", async () => {
+    const unreachableGrpc = new GrpcExecutor({
+      address: "127.0.0.1:59998",
+    });
+
+    const available = await unreachableGrpc.isAvailable();
+    expect(available).toBe(false);
+    unreachableGrpc.close();
+  });
+
+  it("should fallback to secondary executor when gRPC server is unavailable", async () => {
+    const local = new LocalExecutor();
+    const fallbackGrpc = new GrpcExecutor({
+      address: "127.0.0.1:59997",
+      fallbackExecutor: local,
+    });
+
+    const result = await fallbackGrpc.execute({
+      command: "echo 'grpc fallback success'",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("grpc fallback success");
+    fallbackGrpc.close();
   });
 });
 

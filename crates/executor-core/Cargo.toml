@@ -1,0 +1,14 @@
+[package]
+name = "executor-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "High-performance compute process executor and streaming harness for Crucible"
+
+[dependencies]
+thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

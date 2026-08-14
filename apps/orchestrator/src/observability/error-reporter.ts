@@ -247,7 +247,7 @@ export class ErrorReporter extends EventEmitter {
         correlationId: context.correlationId,
         ...context.extra,
       },
-      `[Agent Error] ${message}`
+      `[Agent Error] ${message}`,
     );
 
     this.emit("errorCaptured", record);
@@ -305,7 +305,7 @@ export class ErrorReporter extends EventEmitter {
         toolName: info.toolName,
         ...info.extra,
       },
-      `[Container Failure] ${message}`
+      `[Container Failure] ${message}`,
     );
 
     this.emit("containerFailure", record);
@@ -322,11 +322,11 @@ export class ErrorReporter extends EventEmitter {
     const fiveMinutesAgo = now - 300_000;
 
     const errorsInLastMinute = this.recentErrors.filter(
-      (e) => new Date(e.timestamp).getTime() >= oneMinuteAgo
+      (e) => new Date(e.timestamp).getTime() >= oneMinuteAgo,
     ).length;
 
     const errorsInLast5Minutes = this.recentErrors.filter(
-      (e) => new Date(e.timestamp).getTime() >= fiveMinutesAgo
+      (e) => new Date(e.timestamp).getTime() >= fiveMinutesAgo,
     ).length;
 
     const lastError = this.recentErrors[this.recentErrors.length - 1];
@@ -351,7 +351,7 @@ export class ErrorReporter extends EventEmitter {
   }
 
   private async evaluateAlertConditions(
-    latestError: CapturedErrorRecord
+    latestError: CapturedErrorRecord,
   ): Promise<void> {
     const now = Date.now();
     const cooldown = this.alertThresholds.cooldownPeriodMs ?? 60_000;
@@ -383,7 +383,7 @@ export class ErrorReporter extends EventEmitter {
 
       logger.warn(
         { reason: triggerReason, metrics, lastErrorId: latestError.id },
-        `[Crucible Alert] ${triggerReason}`
+        `[Crucible Alert] ${triggerReason}`,
       );
 
       this.emit("alertTriggered", alert);
@@ -397,7 +397,9 @@ export class ErrorReporter extends EventEmitter {
 
 let globalReporter: ErrorReporter | null = null;
 
-export function initErrorReporter(options?: ErrorReporterOptions): ErrorReporter {
+export function initErrorReporter(
+  options?: ErrorReporterOptions,
+): ErrorReporter {
   globalReporter = new ErrorReporter(options);
   return globalReporter;
 }
@@ -411,7 +413,7 @@ export function getErrorReporter(): ErrorReporter {
 
 export function captureAgentError(
   error: unknown,
-  context?: AgentErrorContext
+  context?: AgentErrorContext,
 ): string {
   return getErrorReporter().captureAgentError(error, context);
 }

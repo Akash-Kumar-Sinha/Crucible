@@ -1,4 +1,8 @@
-import type { ModelProvider, ModelRequest, ModelResponse } from "./provider.interface";
+import type {
+  ModelProvider,
+  ModelRequest,
+  ModelResponse,
+} from "./provider.interface";
 import type { ToolCall } from "../schema/envelope";
 
 export class MockModelProvider implements ModelProvider {
@@ -13,7 +17,8 @@ export class MockModelProvider implements ModelProvider {
     if (lastMessage?.role === "tool") {
       const toolOutput = lastMessage.content;
       return {
-        thought: "I have observed the tool output and am ready to formulate the final answer.",
+        thought:
+          "I have observed the tool output and am ready to formulate the final answer.",
         content: `Based on the tool execution result: ${toolOutput}`,
         finishReason: "stop",
       };
@@ -45,7 +50,11 @@ export class MockModelProvider implements ModelProvider {
     }
 
     // Check if the user asks for time
-    if (userText.includes("time") || userText.includes("date") || userText.includes("day")) {
+    if (
+      userText.includes("time") ||
+      userText.includes("date") ||
+      userText.includes("day")
+    ) {
       const toolCall: ToolCall = {
         id: `call_time_${Date.now()}`,
         name: "get_current_time",
@@ -53,7 +62,8 @@ export class MockModelProvider implements ModelProvider {
       };
 
       return {
-        thought: "The user requested the current time. I will invoke get_current_time.",
+        thought:
+          "The user requested the current time. I will invoke get_current_time.",
         toolCalls: [toolCall],
         finishReason: "tool_calls",
       };

@@ -6,7 +6,10 @@ import type {
   Executor,
 } from "./executor.interface";
 import { logger } from "../observability/logger";
-import { captureAgentError, getErrorReporter } from "../observability/error-reporter";
+import {
+  captureAgentError,
+  getErrorReporter,
+} from "../observability/error-reporter";
 
 /**
  * Factory Pattern: Resolves appropriate sandbox container image per tool or language.
@@ -48,7 +51,7 @@ export class DockerImageFactory {
   resolveImage(
     language?: string,
     toolName?: string,
-    explicitImage?: string
+    explicitImage?: string,
   ): string {
     if (explicitImage) {
       return explicitImage;
@@ -170,7 +173,9 @@ export class DockerContainerConfigBuilder {
 
   build(): Docker.ContainerCreateOptions {
     if (!this.options.Image) {
-      throw new Error("DockerContainerConfigBuilder: Image is required to build container config.");
+      throw new Error(
+        "DockerContainerConfigBuilder: Image is required to build container config.",
+      );
     }
     return { ...this.options };
   }
@@ -213,7 +218,10 @@ export class DockerExecutor implements Executor {
     } else if (config.socketPath) {
       this.docker = new Docker({ socketPath: config.socketPath });
     } else if (config.host) {
-      this.docker = new Docker({ host: config.host, port: config.port || 2375 });
+      this.docker = new Docker({
+        host: config.host,
+        port: config.port || 2375,
+      });
     } else {
       const defaultSocket =
         process.platform === "win32"
@@ -251,7 +259,8 @@ export class DockerExecutor implements Executor {
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
     const startTime = Date.now();
     const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-    const memoryLimit = request.memoryLimitBytes ?? this.defaultMemoryLimitBytes;
+    const memoryLimit =
+      request.memoryLimitBytes ?? this.defaultMemoryLimitBytes;
     const cpuLimit = request.cpuLimit ?? this.defaultCpuLimit;
 
     // Check Docker daemon availability; fallback if configured
@@ -260,7 +269,7 @@ export class DockerExecutor implements Executor {
       if (this.fallbackExecutor) {
         logger.warn(
           { command: request.command },
-          "[DockerExecutor] Docker daemon unavailable, falling back to secondary executor"
+          "[DockerExecutor] Docker daemon unavailable, falling back to secondary executor",
         );
         return this.fallbackExecutor.execute(request);
       }
@@ -282,7 +291,7 @@ export class DockerExecutor implements Executor {
     const image = this.imageFactory.resolveImage(
       request.language,
       request.toolName,
-      request.image
+      request.image,
     );
 
     const builder = new DockerContainerConfigBuilder()
@@ -367,7 +376,10 @@ export class DockerExecutor implements Executor {
 
       // Inspect container state for exitCode, OOM, and memory status
       const inspectData = await container.inspect();
-      const exitCode = waitResult.StatusCode ?? inspectData.State?.ExitCode ?? (killed ? 137 : 0);
+      const exitCode =
+        waitResult.StatusCode ??
+        inspectData.State?.ExitCode ??
+        (killed ? 137 : 0);
       const oomKilled = inspectData.State?.OOMKilled ?? false;
       const durationMs = Date.now() - startTime;
       const containerId = inspectData.Id?.substring(0, 12) || container.id;
@@ -425,7 +437,7 @@ export class DockerExecutor implements Executor {
       const error = err instanceof Error ? err : new Error(String(err));
       logger.error(
         { err: error, command: request.command, image },
-        `[DockerExecutor] Container execution failed: ${error.message}`
+        `[DockerExecutor] Container execution failed: ${error.message}`,
       );
 
       captureAgentError(error, {

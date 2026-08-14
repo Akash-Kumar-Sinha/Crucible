@@ -1,0 +1,17 @@
+[package]
+name = "executor-grpc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "gRPC server interface for Crucible Rust execution core"
+
+[dependencies]
+executor-core.workspace = true
+ipc-proto.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-health.workspace = true
+prost.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

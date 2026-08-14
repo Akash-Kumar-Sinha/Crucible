@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package crucible.executor.v1;
+
+service ExecutorService {
+  // Executes a process to completion and returns the aggregated output.
+  rpc Execute (ExecuteRequest) returns (ExecuteResponse);
+
+  // Executes a process and streams real-time stdout, stderr, and completion status.
+  rpc StreamExecute (ExecuteRequest) returns (stream ExecutionStreamChunk);
+}
+
+message ExecuteRequest {
+  string command = 1;
+  repeated string args = 2;
+  optional string working_dir = 3;
+  map<string, string> env = 4;
+  optional uint64 timeout_ms = 5;
+  optional uint64 max_buffer_bytes = 6;
+  optional string session_id = 7;
+  optional string tool_name = 8;
+}
+
+message ExecuteResponse {
+  int32 exit_code = 1;
+  string stdout = 2;
+  string stderr = 3;
+  uint64 duration_ms = 4;
+  bool timed_out = 5;
+  string error_message = 6;
+}
+
+enum StreamType {
+  STREAM_TYPE_UNSPECIFIED = 0;
+  STREAM_TYPE_STDOUT = 1;
+  STREAM_TYPE_STDERR = 2;
+  STREAM_TYPE_COMPLETION = 3;
+}
+
+message ExecutionStreamChunk {
+  StreamType stream = 1;
+  bytes payload = 2;
+  optional int32 exit_code = 3;
+  optional uint64 duration_ms = 4;
+  optional bool timed_out = 5;
+}
