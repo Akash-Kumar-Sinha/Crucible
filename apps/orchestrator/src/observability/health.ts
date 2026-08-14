@@ -43,6 +43,16 @@ export interface ReadinessCheckOptions {
   checkDocker?: () => Promise<boolean>;
   checkGrpc?: () => Promise<boolean>;
   checkDisk?: () => Promise<boolean>;
+  checkPostgres?: () => Promise<{
+    ok: boolean;
+    latencyMs: number;
+    error?: string;
+  }>;
+  checkRedis?: () => Promise<{
+    ok: boolean;
+    latencyMs: number;
+    error?: string;
+  }>;
   timeoutMs?: number;
 }
 
@@ -306,6 +316,70 @@ export async function performReadinessCheck(
       message: err.message,
     };
     overallHealthy = false;
+  }
+
+  // 7. PostgreSQL Database Check
+  if (
+    options.checkPostgres ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL
+  ) {
+    const checkPgFn =
+      options.checkPostgres ||
+      (async () => {
+        const { checkPostgresHealth } =
+          await import("../persistence/postgres/client");
+        return checkPostgresHealth();
+      });
+
+    try {
+      const pgHealth = await checkPgFn();
+      checks["postgres_database"] = {
+        status: pgHealth.ok ? "ok" : "failed",
+        latencyMs: pgHealth.latencyMs,
+        message: pgHealth.ok ? "PostgreSQL connected" : pgHealth.error,
+      };
+      if (
+        !pgHealth.ok &&
+        (process.env.DATABASE_URL || process.env.POSTGRES_URL)
+      ) {
+        overallHealthy = false;
+      }
+    } catch (err: any) {
+      checks["postgres_database"] = {
+        status: "failed",
+        message: err.message,
+      };
+      overallHealthy = false;
+    }
+  }
+
+  // 8. Redis Hot Cache Check
+  if (options.checkRedis || process.env.REDIS_URL) {
+    const checkRedisFn =
+      options.checkRedis ||
+      (async () => {
+        const { RedisSessionStore } =
+          await import("../persistence/redis/session-store");
+        const store = new RedisSessionStore();
+        const res = await store.checkHealth();
+        await store.close();
+        return res;
+      });
+
+    try {
+      const redisHealth = await checkRedisFn();
+      checks["redis_cache"] = {
+        status: redisHealth.ok ? "ok" : "degraded",
+        latencyMs: redisHealth.latencyMs,
+        message: redisHealth.ok ? "Redis cache connected" : redisHealth.error,
+      };
+    } catch (err: any) {
+      checks["redis_cache"] = {
+        status: "degraded",
+        message: err.message,
+      };
+    }
   }
 
   const response: HealthCheckResponse = {

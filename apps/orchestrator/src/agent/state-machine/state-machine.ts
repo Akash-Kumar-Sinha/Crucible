@@ -4,6 +4,7 @@ import type {
   AgentState,
   TransitionListener,
 } from "./types";
+import type { AgentMessage } from "../../schema/envelope";
 import { computeNextState } from "./transitions";
 
 export interface StateMachineOptions {
@@ -43,6 +44,10 @@ export class AgentStateMachine {
 
   getContext(): Readonly<AgentContext> {
     return { ...this.context };
+  }
+
+  restoreMessages(messages: AgentMessage[]): void {
+    this.context.messages = [...messages];
   }
 
   onTransition(listener: TransitionListener): () => void {

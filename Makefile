@@ -48,8 +48,10 @@ cli:
 # -------------------------------------------------------------
 install:
 	bun install
+	bun run --cwd apps/orchestrator prisma generate
 
 build:
+	bun run --cwd apps/orchestrator prisma generate
 	bunx turbo run build
 	cargo build
 

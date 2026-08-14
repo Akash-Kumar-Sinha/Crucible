@@ -73,6 +73,10 @@ export interface SessionManagerConfig {
   defaultMaxSteps?: number;
   defaultModel?: string;
   maxConcurrentSessions?: number;
+  sessionRepository?: any;
+  runRepository?: any;
+  redisStore?: any;
+  autoPersist?: boolean;
 }
 
 export interface SessionManagerEvents {

@@ -21,6 +21,12 @@ import {
   WebSocketGateway,
   type WsConnectionData,
 } from "../streaming";
+import {
+  SessionRepository,
+  RunRepository,
+  RedisSessionStore,
+} from "../persistence";
+import { logger } from "../observability/logger";
 
 export interface HttpServerOptions {
   port?: number;
@@ -209,12 +215,36 @@ export function startHttpServer(options: HttpServerOptions = {}) {
             defaultModel: modelEnv,
           });
 
+    const sessionRepository =
+      process.env.DATABASE_URL || process.env.POSTGRES_URL
+        ? new SessionRepository()
+        : undefined;
+    const runRepository =
+      process.env.DATABASE_URL || process.env.POSTGRES_URL
+        ? new RunRepository()
+        : undefined;
+    const redisStore = process.env.REDIS_URL
+      ? new RedisSessionStore()
+      : undefined;
+
     sessionManager = new SessionManager({
       defaultProvider: provider,
       defaultTools: tools,
       defaultSystemPrompt:
         "You are Crucible, an advanced AI reasoning assistant with local bash execution and file system tools. Provide direct, helpful answers.",
+      sessionRepository,
+      runRepository,
+      redisStore,
     });
+
+    if (sessionRepository) {
+      sessionManager.restoreFromPersistence().catch((err) => {
+        logger.warn(
+          { err },
+          "[Server] Background session restore encountered an error",
+        );
+      });
+    }
   }
 
   const errorReporter = getErrorReporter();

@@ -20,6 +20,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 bun.log*
+**/src/generated/
 
 # Rust / Cargo
 target/

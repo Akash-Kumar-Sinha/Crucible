@@ -184,6 +184,12 @@ export class Session extends EventEmitter {
           this.emit("message", assistantMessage);
           this.emit("done", result.finalResponse, result);
         }
+        this.emit("turnCompleted", {
+          turnNumber: this.turnCount,
+          thought: result.history[result.history.length - 1]?.thought,
+          modelOutput: result.finalResponse,
+          history: result.history,
+        });
       } else if (result.state === "error") {
         this.setStatus("error");
         const errorMsg =
@@ -196,6 +202,11 @@ export class Session extends EventEmitter {
         this.emit("message", assistantErrorMessage);
         this.emit("error", {
           message: errorMsg,
+        });
+        this.emit("turnCompleted", {
+          turnNumber: this.turnCount,
+          error: errorMsg,
+          history: result.history,
         });
       } else if (result.state === "awaiting_human") {
         this.setStatus("awaiting_human");
@@ -213,7 +224,31 @@ export class Session extends EventEmitter {
       this.emit("message", assistantErrorMessage);
       const errorObj = { message: errorMsg, details: err };
       this.emit("error", errorObj);
+      this.emit("turnCompleted", {
+        turnNumber: this.turnCount,
+        error: errorMsg,
+      });
       throw err;
+    }
+  }
+
+  restoreState(data: {
+    status?: SessionStatus;
+    turnCount?: number;
+    messages?: AgentMessage[];
+    updatedAt?: Date;
+  }): void {
+    if (data.status) {
+      this.status = data.status;
+    }
+    if (data.turnCount !== undefined) {
+      this.turnCount = data.turnCount;
+    }
+    if (data.updatedAt) {
+      this.updatedAt = data.updatedAt;
+    }
+    if (data.messages && data.messages.length > 0) {
+      this.loop.restoreMessages(data.messages);
     }
   }
 

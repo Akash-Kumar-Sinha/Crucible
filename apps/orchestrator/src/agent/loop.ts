@@ -60,6 +60,10 @@ export class AgentLoop {
     return this.stateMachine.getContext();
   }
 
+  restoreMessages(messages: any[]): void {
+    this.stateMachine.restoreMessages(messages);
+  }
+
   setProvider(provider: ModelProvider): this {
     this.provider = provider;
     return this;
