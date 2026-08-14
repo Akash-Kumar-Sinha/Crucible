@@ -168,6 +168,7 @@ make test-live   # Run live OpenRouter integration tests
 | `make test-unit` | Run fast offline TypeScript unit tests                         |
 | `make test-rust` | Run Cargo tests for executor-core, executor-grpc, and sandbox  |
 | `make test-live` | Run live OpenRouter integration test                           |
+| `make demo`      | Run full system verification suite (demos across all subsystems) |
 | `make cli`       | Launch interactive command-line REPL harness                   |
 | `make fmt`       | Format codebase (Prettier for TS/JSON + `cargo fmt` for Rust)  |
 | `make clean`     | Clean build caches, outputs, and Cargo target directory        |

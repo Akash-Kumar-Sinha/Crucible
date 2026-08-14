@@ -10,6 +10,7 @@ import {
   captureAgentError,
   getErrorReporter,
 } from "../observability/error-reporter";
+import { tracer } from "../observability/otel";
 
 /**
  * Factory Pattern: Resolves appropriate sandbox container image per tool or language.
@@ -257,212 +258,234 @@ export class DockerExecutor implements Executor {
    * Execute command inside disposable Docker container
    */
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
-    const startTime = Date.now();
-    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-    const memoryLimit =
-      request.memoryLimitBytes ?? this.defaultMemoryLimitBytes;
-    const cpuLimit = request.cpuLimit ?? this.defaultCpuLimit;
+    return tracer.withSpan(
+      "docker.container_exec",
+      {
+        sessionId: request.sessionId,
+        toolName: request.toolName,
+        command: request.command,
+      },
+      async (span) => {
+        const startTime = Date.now();
+        const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+        const memoryLimit =
+          request.memoryLimitBytes ?? this.defaultMemoryLimitBytes;
+        const cpuLimit = request.cpuLimit ?? this.defaultCpuLimit;
 
-    // Check Docker daemon availability; fallback if configured
-    const available = await this.isAvailable();
-    if (!available) {
-      if (this.fallbackExecutor) {
-        logger.warn(
-          { command: request.command },
-          "[DockerExecutor] Docker daemon unavailable, falling back to secondary executor",
+        // Check Docker daemon availability; fallback if configured
+        const available = await this.isAvailable();
+        if (!available) {
+          if (this.fallbackExecutor) {
+            logger.warn(
+              { command: request.command },
+              "[DockerExecutor] Docker daemon unavailable, falling back to secondary executor",
+            );
+            return this.fallbackExecutor.execute(request);
+          }
+          const errMsg =
+            "Docker daemon is unreachable at configured socket/host.";
+          captureAgentError(new Error(errMsg), {
+            sessionId: request.sessionId,
+            toolName: request.toolName,
+            extra: {
+              executor: this.name,
+              errorType: "DOCKER_DAEMON_UNAVAILABLE",
+            },
+          });
+          return {
+            exitCode: 1,
+            stdout: "",
+            stderr: errMsg,
+            durationMs: Date.now() - startTime,
+            killed: false,
+          };
+        }
+
+        const image = this.imageFactory.resolveImage(
+          request.language,
+          request.toolName,
+          request.image,
         );
-        return this.fallbackExecutor.execute(request);
-      }
-      const errMsg = "Docker daemon is unreachable at configured socket/host.";
-      captureAgentError(new Error(errMsg), {
-        sessionId: request.sessionId,
-        toolName: request.toolName,
-        extra: { executor: this.name, errorType: "DOCKER_DAEMON_UNAVAILABLE" },
-      });
-      return {
-        exitCode: 1,
-        stdout: "",
-        stderr: errMsg,
-        durationMs: Date.now() - startTime,
-        killed: false,
-      };
-    }
 
-    const image = this.imageFactory.resolveImage(
-      request.language,
-      request.toolName,
-      request.image,
-    );
+        const containerEnv = {
+          ...(request.env || {}),
+          TRACEPARENT: span.getTraceparent(),
+        };
 
-    const builder = new DockerContainerConfigBuilder()
-      .withImage(image)
-      .withCommand(request.command)
-      .withWorkingDir(request.cwd || "/workspace")
-      .withUser(this.defaultUser)
-      .withMemoryLimit(memoryLimit)
-      .withCpuLimit(cpuLimit)
-      .withNetworkMode(this.defaultNetworkMode)
-      .withEnv(request.env)
-      .withLabels({
-        "crucible.managed": "true",
-        "crucible.session": request.sessionId || "default",
-        "crucible.timestamp": String(Date.now()),
-      });
+        const builder = new DockerContainerConfigBuilder()
+          .withImage(image)
+          .withCommand(request.command)
+          .withWorkingDir(request.cwd || "/workspace")
+          .withUser(this.defaultUser)
+          .withMemoryLimit(memoryLimit)
+          .withCpuLimit(cpuLimit)
+          .withNetworkMode(this.defaultNetworkMode)
+          .withEnv(containerEnv)
+          .withLabels({
+            "crucible.managed": "true",
+            "crucible.session": request.sessionId || "default",
+            "crucible.timestamp": String(Date.now()),
+          });
 
-    let container: Docker.Container | null = null;
-    let stdoutBuffer = "";
-    let stderrBuffer = "";
-    let killed = false;
-    let timer: NodeJS.Timeout | null = null;
+        let container: Docker.Container | null = null;
+        let stdoutBuffer = "";
+        let stderrBuffer = "";
+        let killed = false;
+        let timer: NodeJS.Timeout | null = null;
 
-    try {
-      const containerConfig = builder.build();
-      container = await this.docker.createContainer(containerConfig);
-
-      // Attach stdout/stderr streams before start
-      const attachStream = await container.attach({
-        stream: true,
-        stdout: true,
-        stderr: true,
-      });
-
-      const stdoutStream = new PassThrough();
-      const stderrStream = new PassThrough();
-
-      stdoutStream.on("data", (chunk: Buffer) => {
-        if (stdoutBuffer.length < this.maxBufferBytes) {
-          stdoutBuffer += chunk.toString("utf8");
-        }
-      });
-
-      stderrStream.on("data", (chunk: Buffer) => {
-        if (stderrBuffer.length < this.maxBufferBytes) {
-          stderrBuffer += chunk.toString("utf8");
-        }
-      });
-
-      this.docker.modem.demuxStream(attachStream, stdoutStream, stderrStream);
-
-      // Start container execution
-      await container.start();
-
-      // Execution timeout handler
-      if (timeoutMs > 0) {
-        timer = setTimeout(async () => {
-          killed = true;
-          try {
-            await container?.stop({ t: 1 });
-          } catch {
-            await container?.kill().catch(() => {});
-          }
-        }, timeoutMs);
-      }
-
-      // AbortSignal listener
-      if (request.signal) {
-        request.signal.addEventListener("abort", async () => {
-          killed = true;
-          try {
-            await container?.stop({ t: 1 });
-          } catch {
-            await container?.kill().catch(() => {});
-          }
-        });
-      }
-
-      // Wait for container process completion
-      const waitResult = await container.wait();
-      if (timer) clearTimeout(timer);
-
-      // Inspect container state for exitCode, OOM, and memory status
-      const inspectData = await container.inspect();
-      const exitCode =
-        waitResult.StatusCode ??
-        inspectData.State?.ExitCode ??
-        (killed ? 137 : 0);
-      const oomKilled = inspectData.State?.OOMKilled ?? false;
-      const durationMs = Date.now() - startTime;
-      const containerId = inspectData.Id?.substring(0, 12) || container.id;
-
-      const result: ExecutionResult = {
-        exitCode,
-        stdout: stdoutBuffer.trimEnd(),
-        stderr: stderrBuffer.trimEnd(),
-        durationMs,
-        killed,
-        oomKilled,
-        containerId,
-        image,
-      };
-
-      // Capture container-level failures in ErrorReporter
-      if (oomKilled) {
-        const oomMsg = `Container ${containerId} killed due to Out-Of-Memory (limit: ${memoryLimit} bytes)`;
-        getErrorReporter().captureContainerFailure({
-          containerId,
-          image,
-          exitCode: 137,
-          oomKilled: true,
-          memoryLimitBytes: memoryLimit,
-          reason: "CONTAINER_OOM_KILLED",
-          sessionId: request.sessionId,
-          toolName: request.toolName,
-        });
-      } else if (exitCode !== 0 && !killed) {
-        getErrorReporter().captureContainerFailure({
-          containerId,
-          image,
-          exitCode,
-          oomKilled: false,
-          reason: "CONTAINER_NON_ZERO_EXIT",
-          stderr: result.stderr,
-          sessionId: request.sessionId,
-          toolName: request.toolName,
-        });
-      } else if (killed) {
-        getErrorReporter().captureContainerFailure({
-          containerId,
-          image,
-          exitCode: 137,
-          oomKilled: false,
-          reason: "CONTAINER_TIMEOUT",
-          sessionId: request.sessionId,
-          toolName: request.toolName,
-        });
-      }
-
-      return result;
-    } catch (err: unknown) {
-      if (timer) clearTimeout(timer);
-      const error = err instanceof Error ? err : new Error(String(err));
-      logger.error(
-        { err: error, command: request.command, image },
-        `[DockerExecutor] Container execution failed: ${error.message}`,
-      );
-
-      captureAgentError(error, {
-        sessionId: request.sessionId,
-        toolName: request.toolName,
-        extra: { executor: this.name, image },
-      });
-
-      return {
-        exitCode: 1,
-        stdout: stdoutBuffer,
-        stderr: stderrBuffer || error.message,
-        durationMs: Date.now() - startTime,
-        killed,
-        image,
-      };
-    } finally {
-      // Ephemeral cleanup: Remove container unconditionally
-      if (container) {
         try {
-          await container.remove({ force: true, v: true });
-        } catch {
-          // Discard container cleanup errors
+          const containerConfig = builder.build();
+          container = await this.docker.createContainer(containerConfig);
+
+          const attachStream = await container.attach({
+            stream: true,
+            stdout: true,
+            stderr: true,
+          });
+
+          const stdoutStream = new PassThrough();
+          const stderrStream = new PassThrough();
+
+          stdoutStream.on("data", (chunk: Buffer) => {
+            if (stdoutBuffer.length < this.maxBufferBytes) {
+              stdoutBuffer += chunk.toString("utf8");
+            }
+          });
+
+          stderrStream.on("data", (chunk: Buffer) => {
+            if (stderrBuffer.length < this.maxBufferBytes) {
+              stderrBuffer += chunk.toString("utf8");
+            }
+          });
+
+          this.docker.modem.demuxStream(
+            attachStream,
+            stdoutStream,
+            stderrStream,
+          );
+
+          // Start container execution
+          await container.start();
+
+          // Execution timeout handler
+          if (timeoutMs > 0) {
+            timer = setTimeout(async () => {
+              killed = true;
+              try {
+                await container?.stop({ t: 1 });
+              } catch {
+                await container?.kill().catch(() => {});
+              }
+            }, timeoutMs);
+          }
+
+          // AbortSignal listener
+          if (request.signal) {
+            request.signal.addEventListener("abort", async () => {
+              killed = true;
+              try {
+                await container?.stop({ t: 1 });
+              } catch {
+                await container?.kill().catch(() => {});
+              }
+            });
+          }
+
+          // Wait for container process completion
+          const waitResult = await container.wait();
+          if (timer) clearTimeout(timer);
+
+          // Inspect container state for exitCode, OOM, and memory status
+          const inspectData = await container.inspect();
+          const exitCode =
+            waitResult.StatusCode ??
+            inspectData.State?.ExitCode ??
+            (killed ? 137 : 0);
+          const oomKilled = inspectData.State?.OOMKilled ?? false;
+          const durationMs = Date.now() - startTime;
+          const containerId = inspectData.Id?.substring(0, 12) || container.id;
+
+          const result: ExecutionResult = {
+            exitCode,
+            stdout: stdoutBuffer.trimEnd(),
+            stderr: stderrBuffer.trimEnd(),
+            durationMs,
+            killed,
+            oomKilled,
+            containerId,
+            image,
+          };
+
+          // Capture container-level failures in ErrorReporter
+          if (oomKilled) {
+            const oomMsg = `Container ${containerId} killed due to Out-Of-Memory (limit: ${memoryLimit} bytes)`;
+            getErrorReporter().captureContainerFailure({
+              containerId,
+              image,
+              exitCode: 137,
+              oomKilled: true,
+              memoryLimitBytes: memoryLimit,
+              reason: "CONTAINER_OOM_KILLED",
+              sessionId: request.sessionId,
+              toolName: request.toolName,
+            });
+          } else if (exitCode !== 0 && !killed) {
+            getErrorReporter().captureContainerFailure({
+              containerId,
+              image,
+              exitCode,
+              oomKilled: false,
+              reason: "CONTAINER_NON_ZERO_EXIT",
+              stderr: result.stderr,
+              sessionId: request.sessionId,
+              toolName: request.toolName,
+            });
+          } else if (killed) {
+            getErrorReporter().captureContainerFailure({
+              containerId,
+              image,
+              exitCode: 137,
+              oomKilled: false,
+              reason: "CONTAINER_TIMEOUT",
+              sessionId: request.sessionId,
+              toolName: request.toolName,
+            });
+          }
+
+          return result;
+        } catch (err: unknown) {
+          if (timer) clearTimeout(timer);
+          const error = err instanceof Error ? err : new Error(String(err));
+          logger.error(
+            { err: error, command: request.command, image },
+            `[DockerExecutor] Container execution failed: ${error.message}`,
+          );
+
+          captureAgentError(error, {
+            sessionId: request.sessionId,
+            toolName: request.toolName,
+            extra: { executor: this.name, image },
+          });
+
+          return {
+            exitCode: 1,
+            stdout: stdoutBuffer,
+            stderr: stderrBuffer || error.message,
+            durationMs: Date.now() - startTime,
+            killed,
+            image,
+          };
+        } finally {
+          // Ephemeral cleanup: Remove container unconditionally
+          if (container) {
+            try {
+              await container.remove({ force: true, v: true });
+            } catch {
+              // Discard container cleanup errors
+            }
+          }
         }
-      }
-    }
+      },
+    );
   }
 }

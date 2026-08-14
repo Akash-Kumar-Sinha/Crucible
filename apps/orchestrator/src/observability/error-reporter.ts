@@ -3,10 +3,14 @@ import type { SessionManager } from "../session/session-manager";
 import type { Session } from "../session/session";
 import type { AgentState } from "../agent/state-machine/types";
 import { logger } from "./logger";
+import { tracer } from "./otel";
 
 export interface AgentErrorContext {
   sessionId?: string;
   turnId?: number;
+  traceId?: string;
+  spanId?: string;
+  traceparent?: string;
   state?: AgentState | string;
   status?: string;
   toolName?: string;
@@ -222,13 +226,21 @@ export class ErrorReporter extends EventEmitter {
       }
     }
 
+    const activeSpan = tracer.getActiveSpan();
+    const enrichedContext: AgentErrorContext = {
+      traceId: activeSpan?.traceId,
+      spanId: activeSpan?.id,
+      traceparent: activeSpan?.getTraceparent(),
+      ...context,
+    };
+
     const record: CapturedErrorRecord = {
       id: errorId,
       timestamp,
       message,
       stack,
       level: "error",
-      context: { ...context },
+      context: enrichedContext,
       breadcrumbs: [...this.breadcrumbs],
     };
 
@@ -345,6 +357,10 @@ export class ErrorReporter extends EventEmitter {
       recentErrors: [...this.recentErrors],
       containerFailuresCount: this.containerFailuresCount,
     };
+  }
+
+  getRecentErrors(): CapturedErrorRecord[] {
+    return [...this.recentErrors];
   }
 
   resetMetrics(): void {

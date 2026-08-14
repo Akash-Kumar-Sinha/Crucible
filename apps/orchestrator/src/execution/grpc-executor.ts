@@ -12,6 +12,8 @@ import type {
 import { getErrorReporter } from "../observability/error-reporter";
 import { logger } from "../observability/logger";
 
+import { tracer } from "../observability/otel";
+
 export interface GrpcExecutorConfig {
   address?: string;
   credentials?: grpc.ChannelCredentials;
@@ -65,105 +67,128 @@ export class GrpcExecutor implements Executor {
    * Executes a command on the Rust compute core over gRPC.
    */
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
-    const isReady = await this.isAvailable();
-
-    if (!isReady) {
-      if (this.fallbackExecutor) {
-        this.log.warn(
-          { address: this.address, fallback: this.fallbackExecutor.name },
-          "Rust gRPC executor unavailable; falling back to secondary executor",
-        );
-        return this.fallbackExecutor.execute(request);
-      }
-
-      const errMsg = `Rust gRPC executor at '${this.address}' is unavailable and no fallback configured.`;
-      getErrorReporter().captureAgentError(new Error(errMsg), {
-        toolName: request.toolName,
+    return tracer.withSpan(
+      "grpc.rust_executor",
+      {
         sessionId: request.sessionId,
-        extra: { address: this.address, command: request.command },
-      });
+        toolName: request.toolName,
+        command: request.command,
+        address: this.address,
+      },
+      async (span) => {
+        const isReady = await this.isAvailable();
 
-      return {
-        exitCode: 1,
-        stdout: "",
-        stderr: errMsg,
-        durationMs: 0,
-        killed: false,
-      };
-    }
-
-    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-    const deadline = new Date(Date.now() + timeoutMs + 2000);
-
-    return new Promise<ExecutionResult>((resolve) => {
-      const callOptions: grpc.CallOptions = { deadline };
-
-      this.client.Execute(
-        {
-          command: "sh",
-          args: ["-c", request.command],
-          working_dir: request.cwd,
-          env: request.env,
-          timeout_ms: timeoutMs,
-          session_id: request.sessionId,
-          tool_name: request.toolName,
-        },
-        callOptions,
-        (err: grpc.ServiceError | null, response?: ExecuteResponse) => {
-          if (err) {
-            const isTimeout = err.code === grpc.status.DEADLINE_EXCEEDED;
-            this.log.error(
-              {
-                errCode: err.code,
-                errMsg: err.message,
-                command: request.command,
-              },
-              "Rust gRPC execution failed",
+        if (!isReady) {
+          if (this.fallbackExecutor) {
+            this.log.warn(
+              { address: this.address, fallback: this.fallbackExecutor.name },
+              "Rust gRPC executor unavailable; falling back to secondary executor",
             );
-
-            getErrorReporter().captureAgentError(err, {
-              toolName: request.toolName,
-              sessionId: request.sessionId,
-              extra: {
-                grpcCode: err.code,
-                command: request.command,
-                address: this.address,
-              },
-            });
-
-            resolve({
-              exitCode: isTimeout ? 137 : 1,
-              stdout: "",
-              stderr: isTimeout
-                ? `Execution timed out after ${timeoutMs}ms`
-                : `gRPC error (${err.code}): ${err.message}`,
-              durationMs: timeoutMs,
-              killed: isTimeout,
-            });
-            return;
+            return this.fallbackExecutor.execute(request);
           }
 
-          if (!response) {
-            resolve({
-              exitCode: 1,
-              stdout: "",
-              stderr: "Empty gRPC response received from executor",
-              durationMs: 0,
-              killed: false,
-            });
-            return;
-          }
-
-          resolve({
-            exitCode: response.exit_code,
-            stdout: response.stdout,
-            stderr: response.stderr,
-            durationMs: Number(response.duration_ms),
-            killed: response.timed_out,
+          const errMsg = `Rust gRPC executor at '${this.address}' is unavailable and no fallback configured.`;
+          getErrorReporter().captureAgentError(new Error(errMsg), {
+            toolName: request.toolName,
+            sessionId: request.sessionId,
+            extra: { address: this.address, command: request.command },
           });
-        },
-      );
-    });
+
+          return {
+            exitCode: 1,
+            stdout: "",
+            stderr: errMsg,
+            durationMs: 0,
+            killed: false,
+          };
+        }
+
+        const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+        const deadline = new Date(Date.now() + timeoutMs + 2000);
+
+        const env = {
+          ...(request.env || {}),
+          TRACEPARENT: span.getTraceparent(),
+        };
+
+        return new Promise<ExecutionResult>((resolve) => {
+          const callOptions: grpc.CallOptions = { deadline };
+
+          this.client.Execute(
+            {
+              command: "sh",
+              args: ["-c", request.command],
+              working_dir: request.cwd,
+              env,
+              timeout_ms: timeoutMs,
+              session_id: request.sessionId,
+              tool_name: request.toolName,
+            },
+            callOptions,
+            (err: grpc.ServiceError | null, response?: ExecuteResponse) => {
+              if (err) {
+                const isTimeout = err.code === grpc.status.DEADLINE_EXCEEDED;
+                span.setAttribute("error", err.message);
+                span.setAttribute("grpcCode", err.code);
+
+                this.log.error(
+                  {
+                    errCode: err.code,
+                    errMsg: err.message,
+                    command: request.command,
+                  },
+                  "Rust gRPC execution failed",
+                );
+
+                getErrorReporter().captureAgentError(err, {
+                  toolName: request.toolName,
+                  sessionId: request.sessionId,
+                  extra: {
+                    grpcCode: err.code,
+                    command: request.command,
+                    address: this.address,
+                  },
+                });
+
+                resolve({
+                  exitCode: isTimeout ? 137 : 1,
+                  stdout: "",
+                  stderr: isTimeout
+                    ? `Execution timed out after ${timeoutMs}ms`
+                    : `gRPC error (${err.code}): ${err.message}`,
+                  durationMs: timeoutMs,
+                  killed: isTimeout,
+                });
+                return;
+              }
+
+              if (!response) {
+                span.setAttribute("error", "Empty response");
+                resolve({
+                  exitCode: 1,
+                  stdout: "",
+                  stderr: "Empty gRPC response received from executor",
+                  durationMs: 0,
+                  killed: false,
+                });
+                return;
+              }
+
+              span.setAttribute("exitCode", response.exit_code);
+              span.setAttribute("durationMs", Number(response.duration_ms));
+
+              resolve({
+                exitCode: response.exit_code,
+                stdout: response.stdout,
+                stderr: response.stderr,
+                durationMs: Number(response.duration_ms),
+                killed: response.timed_out,
+              });
+            },
+          );
+        });
+      },
+    );
   }
 
   /**

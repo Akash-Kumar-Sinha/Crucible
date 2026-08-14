@@ -19,6 +19,7 @@ import type {
   SessionStatus,
   SessionSummary,
 } from "./types";
+import { tracer } from "../observability/otel";
 
 export class Session extends EventEmitter {
   readonly id: SessionId;
@@ -44,6 +45,7 @@ export class Session extends EventEmitter {
     this.metadata = config.metadata ? { ...config.metadata } : {};
 
     this.loop = new AgentLoop({
+      sessionId: this.id,
       provider: config.provider,
       tools: config.tools,
       systemPrompt: config.systemPrompt,
@@ -171,65 +173,80 @@ export class Session extends EventEmitter {
     const userMessage: AgentMessage = { role: "user", content: text };
     this.emit("message", userMessage);
 
-    try {
-      const result = await this.loop.run(text);
-
-      if (result.state === "done") {
-        this.setStatus("done");
-        if (result.finalResponse) {
-          const assistantMessage: AgentMessage = {
-            role: "assistant",
-            content: result.finalResponse,
-          };
-          this.emit("message", assistantMessage);
-          this.emit("done", result.finalResponse, result);
-        }
-        this.emit("turnCompleted", {
-          turnNumber: this.turnCount,
-          thought: result.history[result.history.length - 1]?.thought,
-          modelOutput: result.finalResponse,
-          history: result.history,
-        });
-      } else if (result.state === "error") {
-        this.setStatus("error");
-        const errorMsg =
-          result.error || "Session execution encountered an error";
-        const assistantErrorMessage: AgentMessage = {
-          role: "assistant",
-          content: `⚠️ **Execution Error**: ${errorMsg}`,
-        };
-        this.loop.getContext().messages.push(assistantErrorMessage);
-        this.emit("message", assistantErrorMessage);
-        this.emit("error", {
-          message: errorMsg,
-        });
-        this.emit("turnCompleted", {
-          turnNumber: this.turnCount,
-          error: errorMsg,
-          history: result.history,
-        });
-      } else if (result.state === "awaiting_human") {
-        this.setStatus("awaiting_human");
-      }
-
-      return result;
-    } catch (err: any) {
-      this.setStatus("error");
-      const errorMsg = err?.message || String(err);
-      const assistantErrorMessage: AgentMessage = {
-        role: "assistant",
-        content: `⚠️ **Execution Error**: ${errorMsg}`,
-      };
-      this.loop.getContext().messages.push(assistantErrorMessage);
-      this.emit("message", assistantErrorMessage);
-      const errorObj = { message: errorMsg, details: err };
-      this.emit("error", errorObj);
-      this.emit("turnCompleted", {
+    return tracer.withSpan(
+      "orchestrator.session_turn",
+      {
+        sessionId: this.id,
         turnNumber: this.turnCount,
-        error: errorMsg,
-      });
-      throw err;
-    }
+        title: this.title,
+        promptLength: text.length,
+      },
+      async (span) => {
+        try {
+          const result = await this.loop.run(text);
+
+          if (result.state === "done") {
+            this.setStatus("done");
+            span.setAttribute("finalState", "done");
+            if (result.finalResponse) {
+              const assistantMessage: AgentMessage = {
+                role: "assistant",
+                content: result.finalResponse,
+              };
+              this.emit("message", assistantMessage);
+              this.emit("done", result.finalResponse, result);
+            }
+            this.emit("turnCompleted", {
+              turnNumber: this.turnCount,
+              thought: result.history[result.history.length - 1]?.thought,
+              modelOutput: result.finalResponse,
+              history: result.history,
+            });
+          } else if (result.state === "error") {
+            this.setStatus("error");
+            span.setAttribute("finalState", "error");
+            const errorMsg =
+              result.error || "Session execution encountered an error";
+            const assistantErrorMessage: AgentMessage = {
+              role: "assistant",
+              content: `⚠️ **Execution Error**: ${errorMsg}`,
+            };
+            this.loop.getContext().messages.push(assistantErrorMessage);
+            this.emit("message", assistantErrorMessage);
+            this.emit("error", {
+              message: errorMsg,
+            });
+            this.emit("turnCompleted", {
+              turnNumber: this.turnCount,
+              error: errorMsg,
+              history: result.history,
+            });
+          } else if (result.state === "awaiting_human") {
+            this.setStatus("awaiting_human");
+            span.setAttribute("finalState", "awaiting_human");
+          }
+
+          return result;
+        } catch (err: any) {
+          this.setStatus("error");
+          span.setAttribute("finalState", "error");
+          const errorMsg = err?.message || String(err);
+          const assistantErrorMessage: AgentMessage = {
+            role: "assistant",
+            content: `⚠️ **Execution Error**: ${errorMsg}`,
+          };
+          this.loop.getContext().messages.push(assistantErrorMessage);
+          this.emit("message", assistantErrorMessage);
+          const errorObj = { message: errorMsg, details: err };
+          this.emit("error", errorObj);
+          this.emit("turnCompleted", {
+            turnNumber: this.turnCount,
+            error: errorMsg,
+          });
+          throw err;
+        }
+      },
+    );
   }
 
   restoreState(data: {

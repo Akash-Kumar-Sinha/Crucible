@@ -4,6 +4,7 @@ import type {
   ExecutionResult,
   Executor,
 } from "./executor.interface";
+import { tracer } from "../observability/otel";
 
 export interface LocalExecutorConfig {
   defaultCwd?: string;
@@ -38,85 +39,98 @@ export class LocalExecutor implements Executor {
   }
 
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
-    const startTime = Date.now();
-    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-    const cwd = request.cwd || this.defaultCwd;
+    return tracer.withSpan(
+      "local.subprocess_exec",
+      {
+        sessionId: request.sessionId,
+        toolName: request.toolName,
+        command: request.command,
+      },
+      async (span) => {
+        const startTime = Date.now();
+        const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+        const cwd = request.cwd || this.defaultCwd;
 
-    return new Promise((resolve) => {
-      let stdout = "";
-      let stderr = "";
-      let killed = false;
-      let timer: NodeJS.Timeout | undefined;
+        return new Promise((resolve) => {
+          let stdout = "";
+          let stderr = "";
+          let killed = false;
+          let timer: NodeJS.Timeout | undefined;
 
-      // Merge environment variables
-      const procEnv = {
-        ...process.env,
-        ...this.env,
-        ...request.env,
-      };
+          const procEnv = {
+            ...process.env,
+            ...this.env,
+            ...request.env,
+            TRACEPARENT: span.getTraceparent(),
+          };
 
-      const child = spawn(this.shell, ["-c", request.command], {
-        cwd,
-        env: procEnv,
-      });
+          const child = spawn(this.shell, ["-c", request.command], {
+            cwd,
+            env: procEnv,
+          });
 
-      // Timeout handler
-      if (timeoutMs > 0) {
-        timer = setTimeout(() => {
-          killed = true;
-          child.kill("SIGTERM");
-          // Force kill if not exited after 2s
-          setTimeout(() => {
-            if (!child.killed) child.kill("SIGKILL");
-          }, 2000);
-        }, timeoutMs);
-      }
+          // Timeout handler
+          if (timeoutMs > 0) {
+            timer = setTimeout(() => {
+              killed = true;
+              child.kill("SIGTERM");
+              // Force kill if not exited after 2s
+              setTimeout(() => {
+                if (!child.killed) child.kill("SIGKILL");
+              }, 2000);
+            }, timeoutMs);
+          }
 
-      // AbortSignal cancellation listener
-      if (request.signal) {
-        request.signal.addEventListener("abort", () => {
-          killed = true;
-          child.kill("SIGTERM");
+          // AbortSignal cancellation listener
+          if (request.signal) {
+            request.signal.addEventListener("abort", () => {
+              killed = true;
+              child.kill("SIGTERM");
+            });
+          }
+
+          child.stdout?.on("data", (data: Buffer) => {
+            const text = data.toString("utf8");
+            if (stdout.length < this.maxBufferBytes) {
+              stdout += text;
+            }
+            request.onStdout?.(text);
+          });
+
+          child.stderr?.on("data", (data: Buffer) => {
+            const text = data.toString("utf8");
+            if (stderr.length < this.maxBufferBytes) {
+              stderr += text;
+            }
+            request.onStderr?.(text);
+          });
+
+          (child as any).on("error", (err: Error) => {
+            if (timer) clearTimeout(timer);
+            span.setAttribute("error", err.message);
+            resolve({
+              exitCode: 1,
+              stdout,
+              stderr: stderr || err.message,
+              durationMs: Date.now() - startTime,
+              killed,
+            });
+          });
+
+          (child as any).on("close", (code: number | null) => {
+            if (timer) clearTimeout(timer);
+            const exitCode = code ?? (killed ? 137 : 0);
+            span.setAttribute("exitCode", exitCode);
+            resolve({
+              exitCode,
+              stdout: stdout.trimEnd(),
+              stderr: stderr.trimEnd(),
+              durationMs: Date.now() - startTime,
+              killed,
+            });
+          });
         });
-      }
-
-      child.stdout?.on("data", (data: Buffer) => {
-        const text = data.toString("utf8");
-        if (stdout.length < this.maxBufferBytes) {
-          stdout += text;
-        }
-        request.onStdout?.(text);
-      });
-
-      child.stderr?.on("data", (data: Buffer) => {
-        const text = data.toString("utf8");
-        if (stderr.length < this.maxBufferBytes) {
-          stderr += text;
-        }
-        request.onStderr?.(text);
-      });
-
-      (child as any).on("error", (err: Error) => {
-        if (timer) clearTimeout(timer);
-        resolve({
-          exitCode: 1,
-          stdout,
-          stderr: stderr || err.message,
-          durationMs: Date.now() - startTime,
-          killed,
-        });
-      });
-
-      (child as any).on("close", (code: number | null) => {
-        if (timer) clearTimeout(timer);
-        resolve({
-          exitCode: code ?? (killed ? 137 : 0),
-          stdout: stdout.trimEnd(),
-          stderr: stderr.trimEnd(),
-          durationMs: Date.now() - startTime,
-          killed,
-        });
-      });
-    });
+      },
+    );
   }
 }

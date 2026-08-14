@@ -335,10 +335,47 @@ export function SessionSidebar({
         )}
       </div>
 
+      {/* Metrics Dashboard Navigation */}
+      <div style={{ padding: "8px 16px", borderTop: "1px solid #27272a" }}>
+        <Link
+          href="/metrics"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 12px",
+            background: "#18181b",
+            border: "1px solid #27272a",
+            borderRadius: "6px",
+            fontSize: "12px",
+            color: "#e4e4e7",
+            textDecoration: "none",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Activity size={14} color="#10b981" />
+            <span style={{ fontWeight: 500 }}>Metrics & Tracing</span>
+          </div>
+          <span
+            style={{
+              fontSize: "10px",
+              fontFamily: "monospace",
+              color: "#a1a1aa",
+              background: "#27272a",
+              padding: "2px 5px",
+              borderRadius: "4px",
+            }}
+          >
+            OTel
+          </span>
+        </Link>
+      </div>
+
       {/* System Status Footer */}
       <div
         style={{
-          padding: "14px 16px",
+          padding: "12px 16px",
           borderTop: "1px solid #27272a",
           fontSize: "11px",
           color: "#71717a",
@@ -360,7 +397,6 @@ export function SessionSidebar({
           />
           <span>Core Server: Port 4000</span>
         </div>
-        <Activity size={13} />
       </div>
     </aside>
   );

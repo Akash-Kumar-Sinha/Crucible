@@ -1,25 +1,20 @@
 import { SessionManager } from "../session/session-manager";
 import { ToolRegistry, calculatorTool, getCurrentTimeTool } from "../tools";
 import { OpenRouterProvider } from "../provider/openrouter";
+import { MockModelProvider } from "../provider/mock";
 
 async function verifyConcurrentSessions() {
-  console.log(
-    "===============================================================",
-  );
-  console.log(
-    "  CRUCIBLE MULTI-SESSION ISOLATION & CONCURRENCY VERIFICATION  ",
-  );
-  console.log(
-    "===============================================================\n",
-  );
-
   const tools = new ToolRegistry()
     .register(calculatorTool)
     .register(getCurrentTimeTool);
 
-  const provider = new OpenRouterProvider({
-    defaultModel: process.env.OPENROUTER_MODEL || "openrouter/free",
-  });
+  const modelEnv = process.env.OPENROUTER_MODEL || "openrouter/free";
+  const provider =
+    modelEnv === "mock" || process.env.CRUCIBLE_MOCK_PROVIDER === "true"
+      ? new MockModelProvider()
+      : new OpenRouterProvider({
+          defaultModel: modelEnv,
+        });
 
   const manager = new SessionManager({
     defaultProvider: provider,

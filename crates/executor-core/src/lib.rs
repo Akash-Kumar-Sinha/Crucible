@@ -1,20 +1,13 @@
-//! # Executor Core
-//!
-//! High-performance asynchronous process execution harness and stream capture core for Crucible.
-//!
-//! ## Design Patterns
-//! - **Typestate Pattern**: Prevents unconfigured process execution at compile time.
-//! - **RAII Cleanup**: Automatic process termination and resource deallocation on drop.
-//! - **Structured Observability**: Structured JSON tracing matching Pino conventions.
-
 pub mod error;
 pub mod process;
 pub mod timeout;
+pub mod tracing;
 
 pub use crucible_sandbox as sandbox;
 pub use error::ExecutorError;
 pub use process::{Configured, ExecutionOutput, ProcessExecutor, Unconfigured};
 pub use timeout::enforce_timeout;
+pub use tracing::TraceContext;
 
 use std::sync::Once;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};

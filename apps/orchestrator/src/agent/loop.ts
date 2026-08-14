@@ -11,6 +11,7 @@ import {
 import { stepAwaitingModel, stepAwaitingTool } from "./stepper";
 
 export interface AgentLoopOptions {
+  sessionId?: string;
   provider?: ModelProvider;
   tools?: ToolRegistry;
   systemPrompt?: string;
@@ -47,6 +48,7 @@ export class AgentLoop {
     this.provider = options.provider || new OpenRouterProvider();
     this.tools = options.tools || new ToolRegistry();
     this.stateMachine = new AgentStateMachine({
+      sessionId: options.sessionId,
       systemPrompt: options.systemPrompt,
       maxSteps: options.maxSteps,
     });

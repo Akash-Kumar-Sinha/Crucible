@@ -1,4 +1,4 @@
-.PHONY: help default install build test test-unit test-rust test-live check start serve web run cli fmt clean
+.PHONY: help default install build test test-unit test-rust test-live check start serve web run cli demo fmt clean
 
 default: help
 
@@ -9,6 +9,7 @@ help:
 	@echo "  make start       - Start backend orchestrator (port 4000) & frontend (port 3000) concurrently"
 	@echo "  make serve       - Start core orchestrator HTTP REST server on port 4000"
 	@echo "  make web         - Start Next.js web UI on port 3000"
+	@echo "  make demo        - Run full system verification suite (demos across all subsystems)"
 	@echo "  make run         - Run local orchestrator Thought-Action-Observation demo"
 	@echo "  make cli         - Run interactive Local Executor CLI demo"
 	@echo ""
@@ -36,6 +37,9 @@ serve:
 
 web:
 	bun run --cwd apps/web dev
+
+demo:
+	bun apps/orchestrator/src/demo/run-all-demos.ts
 
 run:
 	bun apps/orchestrator/src/index.ts

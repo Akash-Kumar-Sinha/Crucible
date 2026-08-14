@@ -120,6 +120,86 @@ export function createHttpRouter(
     // Normalize path to strip leading /api prefix if present
     const normalizedPath = pathname.replace(/^\/api/, "");
 
+    if (normalizedPath === "/metrics" || normalizedPath === "/metrics/") {
+      const targetSessionId = url.searchParams.get("sessionId") || undefined;
+      const { spanCollector } = await import("../observability/otel");
+      return new Response(
+        JSON.stringify({
+          status: "success",
+          data: spanCollector.getSystemSummary(targetSessionId),
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+
+    if (normalizedPath === "/traces" || normalizedPath === "/traces/") {
+      const targetSessionId = url.searchParams.get("sessionId") || undefined;
+      const targetTraceId = url.searchParams.get("traceId") || undefined;
+      const limit = parseInt(url.searchParams.get("limit") || "100", 10);
+      const { spanCollector } = await import("../observability/otel");
+      const spans = spanCollector.getSpans({
+        sessionId: targetSessionId,
+        traceId: targetTraceId,
+        limit,
+      });
+      return new Response(
+        JSON.stringify({
+          status: "success",
+          count: spans.length,
+          data: spans,
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+
+    if (normalizedPath === "/metrics/stream") {
+      const targetSessionId = url.searchParams.get("sessionId") || undefined;
+      const { spanCollector } = await import("../observability/otel");
+
+      let timer: any;
+      const stream = new ReadableStream({
+        start(controller) {
+          const sendMetrics = () => {
+            try {
+              const summary = spanCollector.getSystemSummary(targetSessionId);
+              const data = `data: ${JSON.stringify(summary)}\n\n`;
+              controller.enqueue(new TextEncoder().encode(data));
+            } catch {
+              // ignore socket write errors on client disconnect
+            }
+          };
+
+          sendMetrics();
+          timer = setInterval(sendMetrics, 1000);
+        },
+        cancel() {
+          if (timer) clearInterval(timer);
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
     // Route: /sessions/:id/stream (Server-Sent Events)
     const streamMatch = normalizedPath.match(/^\/sessions\/([^/]+)\/stream$/);
     if (streamMatch) {
