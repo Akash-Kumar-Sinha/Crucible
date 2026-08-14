@@ -9,6 +9,11 @@ export interface ExecutionRequest {
   timeoutMs?: number;
   sessionId?: string;
   signal?: AbortSignal;
+  language?: "node" | "python" | "rust" | "bash" | string;
+  toolName?: string;
+  image?: string;
+  memoryLimitBytes?: number;
+  cpuLimit?: number;
 }
 
 /**
@@ -20,12 +25,15 @@ export interface ExecutionResult {
   stderr: string;
   durationMs: number;
   killed?: boolean;
+  oomKilled?: boolean;
+  containerId?: string;
+  image?: string;
 }
 
 /**
  * Adapter Pattern: Executor Interface
  * Abstraction layer separating harness tool dispatch from concrete compute backends
- * (Local Subprocess, Rust Sandbox, Docker Container, Kubernetes Pod, Remote Worker).
+ * (Local Subprocess, Docker Container, Rust Sandbox, Kubernetes Pod, Remote Worker).
  */
 export interface Executor {
   readonly name: string;

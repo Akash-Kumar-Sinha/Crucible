@@ -1,6 +1,7 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type Docker from "dockerode";
 import type { Executor } from "../execution/executor.interface";
 import type { OpenRouterProvider } from "../provider/openrouter";
 
@@ -25,6 +26,7 @@ export interface HealthCheckResponse {
     };
     pid: number;
     runtime: string;
+    dockerSocketPresent?: boolean;
   };
   checks?: Record<string, DependencyCheck>;
 }
@@ -32,8 +34,10 @@ export interface HealthCheckResponse {
 export interface ReadinessCheckOptions {
   provider?: OpenRouterProvider;
   executor?: Executor;
+  docker?: Docker;
   checkOpenRouter?: () => Promise<boolean>;
   checkExecutor?: () => Promise<boolean>;
+  checkDocker?: () => Promise<boolean>;
   checkDisk?: () => Promise<boolean>;
   timeoutMs?: number;
 }
@@ -44,8 +48,12 @@ export function performLivenessCheck(): HealthCheckResponse {
   const heapTotalMb = Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100;
   const heapUsedMb = Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100;
 
-  // Mark unhealthy if memory exceeds 2GB for a single process
   const isHealthy = rssMb < 2048;
+  const socketPath =
+    process.platform === "win32"
+      ? "//./pipe/docker_engine"
+      : "/var/run/docker.sock";
+  const dockerSocketPresent = existsSync(socketPath);
 
   return {
     status: isHealthy ? "healthy" : "unhealthy",
@@ -64,6 +72,7 @@ export function performLivenessCheck(): HealthCheckResponse {
         typeof Bun !== "undefined"
           ? `bun/${Bun.version}`
           : `node/${process.version}`,
+      dockerSocketPresent,
     },
   };
 }
@@ -158,7 +167,44 @@ export async function performReadinessCheck(
     overallHealthy = false;
   }
 
-  // 4. Disk Workspace Check
+  // 4. Docker Daemon Connectivity Check
+  const checkDockerFn =
+    options.checkDocker ||
+    (async () => {
+      if (options.docker) {
+        try {
+          const ping = await options.docker.ping();
+          return ping === "OK" || Buffer.isBuffer(ping);
+        } catch {
+          return false;
+        }
+      }
+      const socketPath =
+        process.platform === "win32"
+          ? "//./pipe/docker_engine"
+          : "/var/run/docker.sock";
+      return existsSync(socketPath);
+    });
+
+  const tDocker = performance.now();
+  try {
+    const dockerOk = await checkDockerFn();
+    checks["docker_daemon"] = {
+      status: dockerOk ? "ok" : "degraded",
+      latencyMs: Math.round(performance.now() - tDocker),
+      message: dockerOk
+        ? "Docker daemon socket reachable"
+        : "Docker daemon socket not found or ping failed",
+    };
+  } catch (err: any) {
+    checks["docker_daemon"] = {
+      status: "degraded",
+      latencyMs: Math.round(performance.now() - tDocker),
+      message: err.message,
+    };
+  }
+
+  // 5. Disk Workspace Check
   const checkDiskFn =
     options.checkDisk ||
     (async () => {

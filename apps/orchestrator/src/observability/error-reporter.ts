@@ -14,6 +14,25 @@ export interface AgentErrorContext {
   extra?: Record<string, unknown>;
 }
 
+export interface ContainerFailureContext {
+  containerId?: string;
+  image?: string;
+  exitCode?: number;
+  oomKilled?: boolean;
+  memoryLimitBytes?: number;
+  cpuLimit?: number;
+  reason:
+    | "CONTAINER_OOM_KILLED"
+    | "CONTAINER_NON_ZERO_EXIT"
+    | "CONTAINER_TIMEOUT"
+    | "DOCKER_DAEMON_UNAVAILABLE"
+    | string;
+  stderr?: string;
+  sessionId?: string;
+  toolName?: string;
+  extra?: Record<string, unknown>;
+}
+
 export interface Breadcrumb {
   timestamp: string;
   category: string;
@@ -30,6 +49,7 @@ export interface CapturedErrorRecord {
   level: "error" | "warning" | "fatal";
   context: AgentErrorContext;
   breadcrumbs: Breadcrumb[];
+  containerContext?: ContainerFailureContext;
 }
 
 export interface ErrorMetrics {
@@ -39,6 +59,7 @@ export interface ErrorMetrics {
   errorRatePerMinute: number;
   lastErrorTimestamp?: string;
   recentErrors: CapturedErrorRecord[];
+  containerFailuresCount: number;
 }
 
 export interface AlertThresholds {
@@ -74,6 +95,7 @@ export class ErrorReporter extends EventEmitter {
   private recentErrors: CapturedErrorRecord[] = [];
   private totalErrorsCount = 0;
   private consecutiveErrorsCount = 0;
+  private containerFailuresCount = 0;
   private lastAlertTimestamp = 0;
   private breadcrumbs: Breadcrumb[] = [];
 
@@ -230,10 +252,66 @@ export class ErrorReporter extends EventEmitter {
 
     this.emit("errorCaptured", record);
 
-    // Evaluate in-memory alert thresholds
     this.evaluateAlertConditions(record).catch(() => {
       // Local alert evaluation error
     });
+
+    return errorId;
+  }
+
+  /**
+   * Capture container-level failures (non-zero exits, OOM kills, timeout kills)
+   */
+  captureContainerFailure(info: ContainerFailureContext): string {
+    const errorId = `cnt_err_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const timestamp = new Date().toISOString();
+    const message = `Container failure (${info.reason}): Container ${info.containerId || "unknown"} [Image: ${info.image || "unknown"}] exited with code ${info.exitCode ?? "N/A"}${info.oomKilled ? " (OOM Killed)" : ""}`;
+
+    const record: CapturedErrorRecord = {
+      id: errorId,
+      timestamp,
+      message,
+      level: info.oomKilled ? "fatal" : "error",
+      context: {
+        sessionId: info.sessionId,
+        toolName: info.toolName,
+        extra: { ...info.extra },
+      },
+      containerContext: info,
+      breadcrumbs: [...this.breadcrumbs],
+    };
+
+    this.totalErrorsCount += 1;
+    this.consecutiveErrorsCount += 1;
+    this.containerFailuresCount += 1;
+    this.recentErrors.push(record);
+    if (this.recentErrors.length > this.maxRecentErrors) {
+      this.recentErrors.shift();
+    }
+
+    // Structured logging with full container telemetry
+    logger.error(
+      {
+        errorId,
+        containerId: info.containerId,
+        image: info.image,
+        exitCode: info.exitCode,
+        oomKilled: info.oomKilled,
+        memoryLimitBytes: info.memoryLimitBytes,
+        cpuLimit: info.cpuLimit,
+        reason: info.reason,
+        stderr: info.stderr,
+        sessionId: info.sessionId,
+        toolName: info.toolName,
+        ...info.extra,
+      },
+      `[Container Failure] ${message}`
+    );
+
+    this.emit("containerFailure", record);
+    this.emit("errorCaptured", record);
+
+    this.evaluateAlertConditions(record).catch(() => {});
 
     return errorId;
   }
@@ -260,6 +338,7 @@ export class ErrorReporter extends EventEmitter {
       errorRatePerMinute: errorsInLastMinute,
       lastErrorTimestamp: lastError?.timestamp,
       recentErrors: [...this.recentErrors],
+      containerFailuresCount: this.containerFailuresCount,
     };
   }
 
@@ -267,6 +346,7 @@ export class ErrorReporter extends EventEmitter {
     this.recentErrors = [];
     this.totalErrorsCount = 0;
     this.consecutiveErrorsCount = 0;
+    this.containerFailuresCount = 0;
     this.breadcrumbs = [];
   }
 
@@ -334,4 +414,8 @@ export function captureAgentError(
   context?: AgentErrorContext
 ): string {
   return getErrorReporter().captureAgentError(error, context);
+}
+
+export function captureContainerFailure(info: ContainerFailureContext): string {
+  return getErrorReporter().captureContainerFailure(info);
 }

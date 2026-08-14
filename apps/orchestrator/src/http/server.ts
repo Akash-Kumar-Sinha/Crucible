@@ -7,7 +7,7 @@ import {
   readFileTool,
 } from "../tools/builtin";
 import { OpenRouterProvider, MockModelProvider } from "../provider";
-import { LocalExecutor } from "../execution/local-executor";
+import { LocalExecutor, DockerExecutor } from "../execution";
 import { SessionRouteHandler } from "./routes/sessions";
 import {
   handleHealthzRequest,
@@ -140,7 +140,12 @@ export function startHttpServer(options: HttpServerOptions = {}) {
 
   let sessionManager = options.sessionManager;
   if (!sessionManager) {
-    const executor = new LocalExecutor();
+    const localExecutor = new LocalExecutor();
+    const dockerExecutor = new DockerExecutor({ fallbackExecutor: localExecutor });
+    const executor =
+      process.env.CRUCIBLE_EXECUTOR === "local"
+        ? localExecutor
+        : dockerExecutor;
     const tools = new ToolRegistry()
       .register(calculatorTool)
       .register(getCurrentTimeTool)
