@@ -38,6 +38,7 @@ pub struct ProcessExecutor<State = Unconfigured> {
     env: HashMap<String, String>,
     timeout: Option<Duration>,
     max_buffer_bytes: usize,
+    cgroup_guard: Option<crucible_sandbox::CgroupGuard>,
 }
 
 impl ProcessExecutor<Unconfigured> {
@@ -52,6 +53,7 @@ impl ProcessExecutor<Unconfigured> {
             env: HashMap::new(),
             timeout: None,
             max_buffer_bytes: 10 * 1024 * 1024, // 10MB default buffer
+            cgroup_guard: None,
         }
     }
 
@@ -66,6 +68,7 @@ impl ProcessExecutor<Unconfigured> {
             env: self.env,
             timeout: self.timeout,
             max_buffer_bytes: self.max_buffer_bytes,
+            cgroup_guard: self.cgroup_guard,
         }
     }
 }
@@ -137,6 +140,13 @@ impl ProcessExecutor<Configured> {
         self
     }
 
+    /// Attaches an isolated cgroup v2 sandbox to this process execution.
+    #[must_use]
+    pub fn with_cgroup(mut self, guard: crucible_sandbox::CgroupGuard) -> Self {
+        self.cgroup_guard = Some(guard);
+        self
+    }
+
     /// Spawns the process and captures its stdout, stderr, and exit status asynchronously.
     ///
     /// If a timeout was configured, execution is automatically bounded and cancelled via RAII.
@@ -189,6 +199,19 @@ impl ProcessExecutor<Configured> {
                 source: err,
             }
         })?;
+
+        // Attach PID to cgroup sandbox if configured
+        if let Some(guard) = &self.cgroup_guard
+            && let Some(pid) = child.id()
+            && let Err(err) = guard.attach_pid(pid)
+        {
+            tracing::warn!(
+                pid = pid,
+                cgroup_id = %guard.id,
+                error = %err,
+                "Failed to attach process PID to cgroup sandbox"
+            );
+        }
 
         let mut stdout_pipe = child.stdout.take();
         let mut stderr_pipe = child.stderr.take();
@@ -360,5 +383,31 @@ mod tests {
             }
             other => panic!("Expected SpawnFailed error, got: {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_process_execution_with_cgroup_sandbox() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let manager = crucible_sandbox::CgroupManager::new(temp_dir.path());
+        let limits = crucible_sandbox::CgroupLimits::new()
+            .with_cpu_limit(50_000, 100_000)
+            .with_memory_limit_bytes(256 * 1024 * 1024)
+            .with_pids_max(32);
+
+        let guard = manager.create_sandbox("test_exec_sandbox", limits).unwrap();
+        let guard_path = guard.path.clone();
+
+        let output = ProcessExecutor::new()
+            .command("echo")
+            .arg("cgroup_sandbox_process_success")
+            .with_cgroup(guard)
+            .execute()
+            .await
+            .expect("Execution in cgroup sandbox failed");
+
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "cgroup_sandbox_process_success");
+        // Ensure cgroup guard directory was torn down automatically upon Drop
+        assert!(!guard_path.exists());
     }
 }

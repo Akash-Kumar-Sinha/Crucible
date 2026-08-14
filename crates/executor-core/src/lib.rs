@@ -11,6 +11,7 @@ pub mod error;
 pub mod process;
 pub mod timeout;
 
+pub use crucible_sandbox as sandbox;
 pub use error::ExecutorError;
 pub use process::{Configured, ExecutionOutput, ProcessExecutor, Unconfigured};
 pub use timeout::enforce_timeout;

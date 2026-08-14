@@ -1,13 +1,28 @@
+use crucible_sandbox::CgroupPool;
 use executor_core::{ExecutorError, ProcessExecutor};
 use ipc_proto::executor_service_server::ExecutorService;
 use ipc_proto::{ExecuteRequest, ExecuteResponse, ExecutionStreamChunk, StreamType};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-#[derive(Debug, Default)]
-pub struct GrpcExecutorService;
+#[derive(Debug, Default, Clone)]
+pub struct GrpcExecutorService {
+    cgroup_pool: Option<Arc<CgroupPool>>,
+}
+
+impl GrpcExecutorService {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_cgroup_pool(mut self, pool: Arc<CgroupPool>) -> Self {
+        self.cgroup_pool = Some(pool);
+        self
+    }
+}
 
 #[tonic::async_trait]
 impl ExecutorService for GrpcExecutorService {
@@ -53,6 +68,23 @@ impl ExecutorService for GrpcExecutorService {
             builder = builder.max_buffer_bytes(max_buf as usize);
         }
 
+        // Attach cgroup v2 sandbox if pool is configured
+        if let Some(pool) = &self.cgroup_pool {
+            let prefix = req.session_id.as_deref().unwrap_or("grpc_exec");
+            match pool.acquire(prefix) {
+                Ok(guard) => {
+                    builder = builder.with_cgroup(guard);
+                }
+                Err(err) => {
+                    tracing::error!(
+                        alert = "CRUCIBLE_CGROUP_CREATION_FAILURE_ALERT",
+                        error = %err,
+                        "Failed to allocate cgroup sandbox for gRPC request"
+                    );
+                }
+            }
+        }
+
         match builder.execute().await {
             Ok(output) => Ok(Response::new(ExecuteResponse {
                 exit_code: output.exit_code,
@@ -87,6 +119,7 @@ impl ExecutorService for GrpcExecutorService {
     ) -> Result<Response<Self::StreamExecuteStream>, Status> {
         let req = request.into_inner();
         let (tx, rx) = mpsc::channel(16);
+        let pool_opt = self.cgroup_pool.clone();
 
         tokio::spawn(async move {
             let mut builder = ProcessExecutor::new().command(&req.command);
@@ -101,6 +134,13 @@ impl ExecutorService for GrpcExecutorService {
             }
             if let Some(timeout_ms) = req.timeout_ms {
                 builder = builder.timeout(Duration::from_millis(timeout_ms));
+            }
+
+            if let Some(pool) = &pool_opt {
+                let prefix = req.session_id.as_deref().unwrap_or("grpc_exec");
+                if let Ok(guard) = pool.acquire(prefix) {
+                    builder = builder.with_cgroup(guard);
+                }
             }
 
             match builder.execute().await {

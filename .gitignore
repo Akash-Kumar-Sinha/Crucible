@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+!.env_example
+*.pem
+*.key
+*.cert
 
 # Node / Bun / JavaScript / TypeScript
 node_modules/
@@ -12,21 +16,45 @@ out/
 .turbo/
 *.tsbuildinfo
 *.log
-.agents
-AGENTS.md
-CLAUDE.md
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.log*
+
 # Rust / Cargo
-/target/
+target/
+**/target/
 **/*.rs.bk
+*.pdb
+
+# Testing & Coverage
+coverage/
+.coverage
+*.lcov
+.nyc_output/
+
+# Temporary files & Databases
+tmp/
+.tmp*
+*.swp
+*.swo
+*~
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
 
 # IDE & OS
 .DS_Store
 Thumbs.db
-*.swp
-*.swo
 .idea/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# Agents & Instructions
+.agents
+AGENTS.md
+CLAUDE.md

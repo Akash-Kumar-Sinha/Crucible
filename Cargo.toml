@@ -4,6 +4,7 @@ members = [
     "crates/executor-core",
     "crates/ipc-proto",
     "crates/executor-grpc",
+    "crates/sandbox",
 ]
 
 [workspace.package]
@@ -26,3 +27,4 @@ prost = "0.13"
 prost-types = "0.13"
 executor-core = { path = "crates/executor-core" }
 ipc-proto = { path = "crates/ipc-proto" }
+crucible-sandbox = { path = "crates/sandbox" }
