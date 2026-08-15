@@ -12,7 +12,9 @@ import {
   Bot,
   AlertTriangle,
   Clock,
+  Sparkles,
 } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 interface MessageBubbleProps {
   message: AgentMessage;
@@ -48,52 +50,16 @@ export function MessageBubble({ message, index = 0 }: MessageBubbleProps) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 28 }}
-        style={{ margin: "10px 0", paddingLeft: "36px" }}
+        className="my-3 pl-8 sm:pl-10"
       >
-        <div
-          style={{
-            background: "rgba(18, 18, 21, 0.75)",
-            border: "1px solid #27272a",
-            borderRadius: "8px",
-            padding: "12px 16px",
-            fontSize: "13px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
-            }}
-          >
-            <CheckCircle2 size={14} color="#22c55e" />
-            <span
-              style={{
-                fontWeight: 600,
-                color: "#a1a1aa",
-                fontSize: "11px",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
+        <div className="rounded-lg border border-white/8 bg-zinc-900/60 p-4 backdrop-blur-md shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 size={14} className="text-primary" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
               Observation {message.name ? `• ${message.name}` : ""}
             </span>
           </div>
-          <pre
-            style={{
-              background: "#09090b",
-              padding: "10px 12px",
-              borderRadius: "6px",
-              overflowX: "auto",
-              color: "#e4e4e7",
-              fontSize: "12px",
-              lineHeight: 1.5,
-              border: "1px solid #18181b",
-              fontFamily: "JetBrains Mono, monospace",
-              margin: 0,
-            }}
-          >
+          <pre className="rounded-xl border border-white/5 bg-zinc-950/80 p-3 text-xs leading-relaxed text-zinc-200 overflow-x-auto">
             {cleanContent}
           </pre>
         </div>
@@ -109,120 +75,54 @@ export function MessageBubble({ message, index = 0 }: MessageBubbleProps) {
         type: "spring",
         stiffness: 400,
         damping: 25,
-        delay: Math.min(index * 0.04, 0.2),
+        delay: Math.min(index * 0.03, 0.15),
       }}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: isUser ? "flex-end" : "flex-start",
-        margin: "14px 0",
-        gap: "6px",
-      }}
+      className={`my-3 flex flex-col gap-1.5 ${
+        isUser ? "items-end" : "items-start"
+      }`}
     >
       {/* Sender Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          fontSize: "12px",
-          fontWeight: 600,
-          color: "#a1a1aa",
-          padding: "0 4px",
-        }}
-      >
+      <div className="flex items-center gap-2 px-1 text-xs font-medium text-zinc-400">
         {isUser ? (
           <>
             <span>You</span>
-            <div
-              style={{
-                width: "22px",
-                height: "22px",
-                borderRadius: "50%",
-                background: "#27272a",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <User size={12} color="#f4f4f5" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-800 border border-white/10 text-zinc-200">
+              <User size={12} />
             </div>
           </>
         ) : (
           <>
-            <div
-              style={{
-                width: "22px",
-                height: "22px",
-                borderRadius: "50%",
-                background: "#27272a",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Bot size={12} color="#f4f4f5" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 border border-primary/20 text-primary">
+              <Bot size={12} />
             </div>
-            <span>Crucible Agent</span>
+            <span className="font-semibold text-zinc-300">Crucible Agent</span>
           </>
         )}
       </div>
 
       {/* Message Card Container */}
       <div
-        style={{
-          maxWidth: "85%",
-          background: isUser
-            ? "#18181b"
+        className={`max-w-[85%] rounded-lg p-5 shadow-xl transition-all ${
+          isUser
+            ? "bg-primary/10 border border-primary/25 text-white rounded-tr-sm"
             : isErrorMessage
-              ? "rgba(239, 68, 68, 0.08)"
-              : "#121215",
-          border: isUser
-            ? "1px solid #3f3f46"
-            : isErrorMessage
-              ? "1px solid rgba(239, 68, 68, 0.3)"
-              : "1px solid #27272a",
-          borderRadius: isUser ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
-          padding: "14px 18px",
-          color: "#f4f4f5",
-          lineHeight: 1.6,
-          fontSize: "14px",
-          boxShadow: "0 2px 12px rgba(0, 0, 0, 0.25)",
-        }}
+              ? "bg-rose-950/20 border border-rose-500/30 text-rose-200 rounded-tl-sm"
+              : "bg-zinc-900/70 border border-white/8 text-zinc-100 rounded-tl-sm backdrop-blur-md"
+        }`}
       >
         {/* Expandable Reasoning / Thought process */}
         {thoughtText ? (
-          <div
-            style={{
-              marginBottom: "12px",
-              background: "#09090b",
-              border: "1px solid #27272a",
-              borderRadius: "6px",
-              overflow: "hidden",
-            }}
-          >
+          <div className="mb-3 overflow-hidden rounded-lg border border-white/8 bg-zinc-950/60">
             <button
+              type="button"
               onClick={() => setThoughtOpen(!thoughtOpen)}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 12px",
-                background: "transparent",
-                border: "none",
-                color: "#a1a1aa",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                userSelect: "none",
-              }}
+              className="flex w-full items-center justify-between px-3.5 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
             >
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                <Brain size={14} color="#eab308" />
-                <span>Reasoning Process</span>
+              <div className="flex items-center gap-2">
+                <Brain size={14} className="text-amber-400" />
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">
+                  Reasoning Process
+                </span>
               </div>
               <motion.div
                 animate={{ rotate: thoughtOpen ? 180 : 0 }}
@@ -238,20 +138,10 @@ export function MessageBubble({ message, index = 0 }: MessageBubbleProps) {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                  style={{ overflow: "hidden" }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  className="overflow-hidden"
                 >
-                  <div
-                    style={{
-                      padding: "8px 12px 12px",
-                      whiteSpace: "pre-wrap",
-                      lineHeight: 1.5,
-                      color: "#71717a",
-                      fontFamily: "JetBrains Mono, monospace",
-                      fontSize: "11px",
-                      borderTop: "1px solid #18181b",
-                    }}
-                  >
+                  <div className="border-t border-white/5 px-3.5 py-3 text-[11px] leading-relaxed text-zinc-400 whitespace-pre-wrap">
                     {thoughtText}
                   </div>
                 </motion.div>
@@ -262,53 +152,19 @@ export function MessageBubble({ message, index = 0 }: MessageBubbleProps) {
 
         {/* Formatted Tool Calls */}
         {message.toolCalls && message.toolCalls.length > 0 ? (
-          <div
-            style={{
-              marginBottom: "12px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-            }}
-          >
+          <div className="mb-3 flex flex-col gap-2">
             {message.toolCalls.map((tc) => (
               <div
                 key={tc.id}
-                style={{
-                  background: "#09090b",
-                  border: "1px solid #27272a",
-                  borderRadius: "6px",
-                  padding: "8px 12px",
-                }}
+                className="rounded-lg border border-white/8 bg-zinc-950/60 p-3.5"
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    marginBottom: "6px",
-                  }}
-                >
-                  <Terminal size={13} color="#38bdf8" />
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      color: "#38bdf8",
-                    }}
-                  >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Terminal size={13} className="text-primary" />
+                  <span className="font-mono text-xs font-semibold text-primary">
                     Action: {tc.name}
                   </span>
                 </div>
-                <pre
-                  style={{
-                    fontSize: "11px",
-                    color: "#a1a1aa",
-                    fontFamily: "JetBrains Mono, monospace",
-                    overflowX: "auto",
-                    margin: 0,
-                    lineHeight: 1.4,
-                  }}
-                >
+                <pre className="font-mono text-[11px] text-zinc-300 overflow-x-auto leading-relaxed">
                   {JSON.stringify(tc.arguments, null, 2)}
                 </pre>
               </div>
@@ -318,13 +174,7 @@ export function MessageBubble({ message, index = 0 }: MessageBubbleProps) {
 
         {/* Message Content */}
         {cleanContent ? (
-          <div
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              color: isErrorMessage ? "#f87171" : "#f4f4f5",
-            }}
-          >
+          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
             {cleanContent}
           </div>
         ) : null}

@@ -15,7 +15,15 @@ import {
   Settings,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SetupWizard } from "./SetupWizard";
+import { Button } from "@/components/ui/button";
+import { Logo, CrucibleWordmark } from "@/components/Logo";
+import {
+  CommandPalette,
+  useCommandPalette,
+  type Command,
+} from "@/components/ui/command-palette";
 
 interface SessionSidebarProps {
   sessions: SessionSummary[];
@@ -32,9 +40,11 @@ export function SessionSidebar({
   onDeleteSession,
   loading = false,
 }: SessionSidebarProps) {
+  const router = useRouter();
   const [creating, setCreating] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [isSetupOpen, setIsSetupOpen] = React.useState(false);
+  const { open: commandOpen, setOpen: setCommandOpen } = useCommandPalette();
 
   const handleCreate = async () => {
     setCreating(true);
@@ -50,6 +60,43 @@ export function SessionSidebar({
       setCreating(false);
     }
   };
+
+  const commands: Command[] = [
+    {
+      id: "new-session",
+      label: "New Session",
+      description: "Create a fresh agent session",
+      group: "Actions",
+      icon: <Plus size={16} />,
+      onSelect: () => {
+        void handleCreate();
+      },
+    },
+    {
+      id: "setup",
+      label: "Setup & Credentials",
+      description: "OpenRouter key and model",
+      group: "Actions",
+      icon: <Settings size={16} />,
+      onSelect: () => setIsSetupOpen(true),
+    },
+    {
+      id: "metrics",
+      label: "Metrics & Tracing",
+      description: "OpenTelemetry dashboard",
+      group: "Navigation",
+      icon: <Activity size={16} />,
+      onSelect: () => router.push("/metrics"),
+    },
+    ...sessions.map((session) => ({
+      id: `session-${session.id}`,
+      label: session.title || session.id,
+      description: session.status,
+      group: "Sessions",
+      icon: <MessageSquare size={16} />,
+      onSelect: () => router.push(`/session/${session.id}`),
+    })),
+  ];
 
   return (
     <aside
@@ -74,80 +121,31 @@ export function SessionSidebar({
           justifyContent: "space-between",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <motion.div
-            whileHover={{ rotate: 15 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            style={{
-              width: "30px",
-              height: "30px",
-              borderRadius: "8px",
-              background: "#18181b",
-              border: "1px solid #27272a",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Cpu size={16} color="#f4f4f5" />
-          </motion.div>
-          <div>
-            <h1
-              style={{
-                fontSize: "14px",
-                fontWeight: 700,
-                letterSpacing: "-0.01em",
-                color: "#f4f4f5",
-              }}
-            >
-              CRUCIBLE
-            </h1>
-            <p style={{ fontSize: "11px", color: "#71717a" }}>
-              Reasoning Orchestrator
+        <Link href="/" className="flex items-center gap-2.5 group">
+          <Logo className="w-7 h-7 text-primary transition-transform group-hover:scale-105" />
+          <div className="flex flex-col">
+            <CrucibleWordmark className="text-2xl text-white group-hover:text-primary transition-colors leading-none" />
+            <p className="text-[10px] text-zinc-500 mt-0.5">
+              Reasoning Harness
             </p>
           </div>
-        </div>
+        </Link>
       </div>
 
-      {/* New Session Action Button */}
       <div style={{ padding: "14px 16px" }}>
-        <motion.button
+        <Button
+          type="button"
           onClick={handleCreate}
           disabled={creating}
-          whileHover={{ scale: creating ? 1 : 1.02 }}
-          whileTap={{ scale: creating ? 1 : 0.97 }}
-          transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            background: creating ? "#27272a" : "#ffffff",
-            color: creating ? "#a1a1aa" : "#09090b",
-            border: "none",
-            borderRadius: "7px",
-            padding: "9px 14px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: creating ? "not-allowed" : "pointer",
-            boxShadow: creating ? "none" : "0 2px 8px rgba(255, 255, 255, 0.1)",
-            transition: "background 0.2s ease, color 0.2s ease",
-          }}
+          className="w-full"
         >
           {creating ? (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-              style={{ display: "flex", alignItems: "center" }}
-            >
-              <Loader2 size={15} />
-            </motion.div>
+            <Loader2 data-icon="inline-start" className="animate-spin" />
           ) : (
-            <Plus size={15} />
+            <Plus data-icon="inline-start" />
           )}
-          <span>{creating ? "Creating Session..." : "New Session"}</span>
-        </motion.button>
+          {creating ? "Creating Session..." : "New Session"}
+        </Button>
       </div>
 
       {/* Inline Error Notice */}
@@ -248,9 +246,11 @@ export function SessionSidebar({
                   alignItems: "center",
                   justifyContent: "space-between",
                   borderRadius: "6px",
-                  background: isActive ? "#18181b" : "transparent",
+                  background: isActive
+                    ? "rgba(59, 130, 246, 0.08)"
+                    : "transparent",
                   border: isActive
-                    ? "1px solid #3f3f46"
+                    ? "1px solid rgba(59, 130, 246, 0.25)"
                     : "1px solid transparent",
                   transition: "background 0.15s ease, border 0.15s ease",
                 }}
@@ -264,14 +264,14 @@ export function SessionSidebar({
                     gap: "10px",
                     padding: "9px 10px",
                     textDecoration: "none",
-                    color: isActive ? "#f4f4f5" : "#a1a1aa",
+                    color: isActive ? "#ffffff" : "#a1a1aa",
                     fontSize: "13px",
                     overflow: "hidden",
                   }}
                 >
                   <MessageSquare
                     size={15}
-                    color={isActive ? "#ffffff" : "#71717a"}
+                    color={isActive ? "#3b82f6" : "#71717a"}
                     style={{ flexShrink: 0 }}
                   />
                   <div
@@ -382,42 +382,20 @@ export function SessionSidebar({
           </span>
         </Link>
 
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          className="h-auto w-full justify-between px-3 py-2"
           onClick={() => setIsSetupOpen(true)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "8px 12px",
-            background: "#18181b",
-            border: "1px solid #27272a",
-            borderRadius: "6px",
-            fontSize: "12px",
-            color: "#e4e4e7",
-            cursor: "pointer",
-            textAlign: "left",
-            width: "100%",
-            transition: "all 0.15s ease",
-          }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Settings size={14} color="#a1a1aa" />
-            <span style={{ fontWeight: 500 }}>Setup & Credentials</span>
-          </div>
-          <span
-            style={{
-              fontSize: "10px",
-              fontFamily: "monospace",
-              color: "#a1a1aa",
-              background: "#27272a",
-              padding: "2px 5px",
-              borderRadius: "4px",
-            }}
-          >
+          <span className="flex items-center gap-2">
+            <Settings size={14} className="text-white/60" />
+            <span className="font-medium">Setup & Credentials</span>
+          </span>
+          <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">
             Config
           </span>
-        </button>
+        </Button>
       </div>
 
       {/* System Status Footer */}
@@ -445,7 +423,21 @@ export function SessionSidebar({
           />
           <span>Core Server: Port 4000</span>
         </div>
+        <button
+          type="button"
+          onClick={() => setCommandOpen(true)}
+          className="rounded-lg border border-white/8 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/40 transition-colors hover:text-white/70"
+        >
+          ⌘K
+        </button>
       </div>
+
+      <CommandPalette
+        open={commandOpen}
+        onClose={() => setCommandOpen(false)}
+        commands={commands}
+        placeholder="Search sessions and actions..."
+      />
 
       <SetupWizard isOpen={isSetupOpen} onClose={() => setIsSetupOpen(false)} />
     </aside>

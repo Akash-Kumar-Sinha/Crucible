@@ -81,7 +81,8 @@ describe("OpenRouter Free Tier Integration", () => {
     );
     expect(usedCalculator).toBe(true);
 
-    // 345 * 25 = 8625
-    expect(result.finalResponse).toContain("8625");
+    // 345 * 25 = 8625 (or 8,625)
+    const normalized = (result.finalResponse || "").replace(/[,*_]/g, "");
+    expect(normalized).toContain("8625");
   }, 45000); // 45s timeout for free-tier LLM inference
 });

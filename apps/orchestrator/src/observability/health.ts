@@ -277,10 +277,10 @@ export async function performReadinessCheck(
         ? "Rust gRPC executor reachable"
         : "Rust gRPC executor service unreachable",
     };
-    if (
-      !grpcOk &&
-      (process.env.CRUCIBLE_EXECUTOR === "grpc" || options.grpcAddress)
-    ) {
+    const isGrpcActive = options.executor
+      ? options.executor.name === "grpc"
+      : process.env.CRUCIBLE_EXECUTOR === "grpc";
+    if (!grpcOk && (isGrpcActive || options.grpcAddress)) {
       overallHealthy = false;
     }
   } catch (err: any) {

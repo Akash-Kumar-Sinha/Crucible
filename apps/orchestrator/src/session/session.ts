@@ -325,11 +325,23 @@ export class Session extends EventEmitter {
   }
 
   approve(toolCallId?: string): AgentState {
-    return this.loop.approve(toolCallId);
+    if (this.loop.getState() === "awaiting_human") {
+      const next = this.loop.approve(toolCallId);
+      this.setStatus("running");
+      return next;
+    }
+    this.setStatus("running");
+    return this.loop.getState();
   }
 
   reject(reason?: string, toolCallId?: string): AgentState {
-    return this.loop.reject(reason, toolCallId);
+    if (this.loop.getState() === "awaiting_human") {
+      const next = this.loop.reject(reason, toolCallId);
+      this.setStatus("idle");
+      return next;
+    }
+    this.setStatus("idle");
+    return this.loop.getState();
   }
 
   dispose(): void {

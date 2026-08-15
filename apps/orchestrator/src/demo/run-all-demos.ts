@@ -35,6 +35,11 @@ const demos: DemoSuiteItem[] = [
     args: ["apps/orchestrator/src/demo/verify-guardrails.ts"],
   },
   {
+    name: "UI Integration: Sandbox & Guardrail Visibility (Approve/Deny & Resource Budgets)",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-ui-visibility.ts"],
+  },
+  {
     name: "Rust Sandboxed Process Execution & Isolation Engine",
     command: "cargo",
     args: ["run", "-p", "executor-core", "--bin", "verify_core"],

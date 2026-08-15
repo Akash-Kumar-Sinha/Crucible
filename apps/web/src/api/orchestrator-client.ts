@@ -190,6 +190,70 @@ export class OrchestratorClient {
     });
   }
 
+  async approveGuardrailAction(
+    sessionId: string,
+    decision: {
+      approved: boolean;
+      reason?: string;
+      toolCallId?: string;
+      operatorId?: string;
+      resume?: boolean;
+    },
+  ): Promise<{
+    sessionId: string;
+    action: "approved" | "rejected";
+    operatorId?: string;
+    state?: string;
+    status?: string;
+    durationMs?: number;
+  }> {
+    return this.request<{
+      sessionId: string;
+      action: "approved" | "rejected";
+      operatorId?: string;
+      state?: string;
+      status?: string;
+      durationMs?: number;
+    }>(`/sessions/${sessionId}/approval`, {
+      method: "POST",
+      timeoutMs: 15_000,
+      body: JSON.stringify(decision),
+    });
+  }
+
+  async getSandboxInfo(sessionId?: string): Promise<{
+    status: "active" | "standby";
+    tier: string;
+    executor: string;
+    cgroups: {
+      enabled: boolean;
+      cpuQuota: string;
+      memoryLimit: string;
+      pidsLimit: number;
+      memoryCurrent: string;
+    };
+    filesystem: {
+      isolation: string;
+      strategy: string;
+      writableLayer: string;
+      cleanup: string;
+    };
+    network: {
+      policy: string;
+      egress: string;
+      protocols: string[];
+      nftables: string;
+    };
+    guardrails: {
+      status: string;
+      activePolicies: string[];
+      pendingHumanReview: boolean;
+    };
+  }> {
+    const path = sessionId ? `/sessions/${sessionId}/sandbox` : "/sandbox/info";
+    return this.request(path, { timeoutMs: 5_000 });
+  }
+
   async deleteSession(id: string): Promise<{ success: boolean; id: string }> {
     return this.request<{ success: boolean; id: string }>(`/sessions/${id}`, {
       method: "DELETE",

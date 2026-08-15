@@ -1,27 +1,27 @@
 "use client";
 
 import * as React from "react";
-import type { SessionDetail } from "../api/orchestrator-client";
+import {
+  orchestratorClient,
+  type SessionDetail,
+} from "../api/orchestrator-client";
 import { MessageBubble } from "./MessageBubble";
 import { LiveOutput } from "./LiveOutput";
+import { GuardrailApproval } from "./GuardrailApproval";
+import { SandboxInfoPanel } from "./SandboxInfoPanel";
 import { SessionStreamClient } from "../api/stream-client";
 import { useSessionStore } from "../stores/session-store";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  Send,
-  Loader2,
-  Sparkles,
-  AlertCircle,
-  Terminal,
-  Cpu,
-  Radio,
-} from "lucide-react";
+import { AlertCircle, Radio, Shield, ArrowRight, Loader2 } from "lucide-react";
+import { PromptInput } from "@/components/ui/prompt-input";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Logo, CrucibleWordmark } from "@/components/Logo";
 
 interface ChatWindowProps {
-  session?: SessionDetail | null;
-  onSendMessage: (message: string) => Promise<void>;
+  session: SessionDetail | null;
+  onSendMessage: (text: string) => Promise<void>;
   loading?: boolean;
-  sending?: boolean;
   error?: string | null;
 }
 
@@ -29,427 +29,340 @@ export function ChatWindow({
   session,
   onSendMessage,
   loading = false,
-  sending = false,
   error = null,
 }: ChatWindowProps) {
   const [input, setInput] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [showSandboxInfo, setShowSandboxInfo] = React.useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const {
-    streamingThought,
-    streamingTokens,
-    activeToolCalls,
-    toolStdout,
-    toolStderr,
-    isStreamConnected,
-    setStreamConnected,
-    setStreamingThought,
-    appendStreamingTokens,
-    setActiveToolCalls,
-    appendToolStdout,
-    appendToolStderr,
-    clearStreamingState,
-    addMessageToCurrentSession,
-    setStatus,
-  } = useSessionStore();
+  // Streaming real-time state
+  const streamingTokens = useSessionStore((s) => s.streamingTokens);
+  const streamingThought = useSessionStore((s) => s.streamingThought);
+  const activeToolCalls = useSessionStore((s) => s.activeToolCalls);
+  const toolStdout = useSessionStore((s) => s.toolStdout);
+  const toolStderr = useSessionStore((s) => s.toolStderr);
+  const isStreamConnected = useSessionStore((s) => s.isStreamConnected);
+  const appendStreamingTokens = useSessionStore((s) => s.appendStreamingTokens);
+  const setStreamingThought = useSessionStore((s) => s.setStreamingThought);
+  const setActiveToolCalls = useSessionStore((s) => s.setActiveToolCalls);
+  const appendToolStdout = useSessionStore((s) => s.appendToolStdout);
+  const appendToolStderr = useSessionStore((s) => s.appendToolStderr);
+  const setStreamConnected = useSessionStore((s) => s.setStreamConnected);
+  const clearStreamingState = useSessionStore((s) => s.clearStreamingState);
+  const setStatus = useSessionStore((s) => s.setStatus);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const streamClientRef = React.useRef<SessionStreamClient | null>(null);
 
-  React.useEffect(() => {
-    scrollToBottom();
-  }, [session?.messages, sending, streamingTokens, toolStdout]);
-
-  // Set up real-time SSE stream subscription for the active session
+  // Connect SSE stream whenever active session changes
   React.useEffect(() => {
     if (!session?.id) {
-      clearStreamingState();
+      if (streamClientRef.current) {
+        streamClientRef.current.disconnect();
+        streamClientRef.current = null;
+      }
+      setStreamConnected(false);
       return;
     }
 
-    const client = new SessionStreamClient(session.id);
-    client.connect();
+    clearStreamingState();
 
-    const unsubConn = client.onConnectionChange((connected) => {
-      setStreamConnected(connected);
+    const client = new SessionStreamClient(session.id, { transport: "sse" });
+    streamClientRef.current = client;
+
+    client.on("token", (data) => {
+      appendStreamingTokens(data.delta);
     });
 
-    const unsubToken = client.on("token", ({ delta }) => {
-      appendStreamingTokens(delta);
+    client.on("thought", (data) => {
+      setStreamingThought(data.thought);
     });
 
-    const unsubThought = client.on("thought", ({ thought }) => {
-      setStreamingThought(thought);
+    client.on("tool_start", (data) => {
+      setActiveToolCalls(data.toolCalls);
     });
 
-    const unsubToolStart = client.on("tool_start", ({ toolCalls }) => {
-      setActiveToolCalls(toolCalls);
+    client.on("tool_stdout", (data) => {
+      appendToolStdout(data.chunk);
     });
 
-    const unsubToolStdout = client.on("tool_stdout", ({ chunk }) => {
-      appendToolStdout(chunk);
+    client.on("tool_stderr", (data) => {
+      appendToolStderr(data.chunk);
     });
 
-    const unsubToolStderr = client.on("tool_stderr", ({ chunk }) => {
-      appendToolStderr(chunk);
-    });
-
-    const unsubToolResult = client.on("tool_result", () => {
-      setActiveToolCalls([]);
-    });
-
-    const unsubStatus = client.on("status_change", ({ status }) => {
-      setStatus(status as any);
-      if (status === "done" || status === "idle") {
-        clearStreamingState();
+    client.on("status_change", (data) => {
+      setStatus(data.status as any);
+      if (data.status === "done" || data.status === "error") {
+        setSending(false);
       }
     });
 
-    const unsubDone = client.on("done", () => {
-      clearStreamingState();
+    client.onConnectionChange((connected) => {
+      setStreamConnected(connected);
     });
 
-    return () => {
-      unsubConn();
-      unsubToken();
-      unsubThought();
-      unsubToolStart();
-      unsubToolStdout();
-      unsubToolStderr();
-      unsubToolResult();
-      unsubStatus();
-      unsubDone();
-      client.dispose();
-      setStreamConnected(false);
-    };
-  }, [session?.id]);
+    client.connect();
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || sending) return;
+    return () => {
+      client.disconnect();
+      streamClientRef.current = null;
+    };
+  }, [
+    session?.id,
+    appendStreamingTokens,
+    setStreamingThought,
+    setActiveToolCalls,
+    appendToolStdout,
+    appendToolStderr,
+    setStreamConnected,
+    clearStreamingState,
+    setStatus,
+  ]);
+
+  // Auto-scroll when messages, tokens, thoughts, or tools update
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [
+    session?.messages,
+    streamingTokens,
+    streamingThought,
+    activeToolCalls,
+    toolStdout,
+  ]);
+
+  const handleSubmit = async (textToSend?: string) => {
+    const text = (textToSend || input).trim();
+    if (!text || sending) return;
 
     setInput("");
+    setSending(true);
     clearStreamingState();
-    await onSendMessage(trimmed);
-  };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+    try {
+      await onSendMessage(text);
+    } catch {
+      // errors handled by parent store
+    } finally {
+      setSending(false);
     }
   };
 
-  if (loading && !session) {
+  const handleSuggestion = (promptText: string) => {
+    setInput(promptText);
+    void handleSubmit(promptText);
+  };
+
+  if (loading) {
     return (
-      <main
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#09090b",
-          height: "100vh",
-        }}
-      >
+      <main className="flex-1 flex items-center justify-center bg-zinc-950 h-screen">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "12px",
-            color: "#a1a1aa",
-          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-3 text-zinc-400 font-sans"
         >
-          <Loader2 size={24} className="animate-spin" />
-          <p style={{ fontSize: "13px" }}>Loading session...</p>
+          <Loader2 size={24} className="animate-spin text-primary" />
+          <p className="text-xs font-medium">
+            Connecting to session runtime...
+          </p>
         </motion.div>
       </main>
     );
   }
 
+  // Welcome Screen (when session is null or on initial landing)
   if (!session) {
     return (
-      <main
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#09090b",
-          height: "100vh",
-          padding: "24px",
-        }}
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: "spring", stiffness: 350, damping: 25 }}
-          style={{ textAlign: "center", maxWidth: "440px" }}
-        >
-          <div
-            style={{
-              width: "52px",
-              height: "52px",
-              borderRadius: "14px",
-              background: "#18181b",
-              border: "1px solid #27272a",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px",
-            }}
+      <main className="flex-1 flex flex-col justify-between bg-zinc-950 h-screen p-6 sm:p-10 font-sans relative overflow-hidden">
+        <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full text-center space-y-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+            className="flex flex-col items-center gap-3"
           >
-            <Sparkles size={26} color="#f4f4f5" />
-          </div>
-          <h2
-            style={{
-              fontSize: "20px",
-              fontWeight: 700,
-              marginBottom: "8px",
-              color: "#f4f4f5",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Welcome to Crucible
-          </h2>
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#71717a",
-              lineHeight: 1.6,
-              marginBottom: "20px",
-            }}
-          >
-            Autonomous reasoning harness with local subprocess execution,
-            multi-session actor isolation, and OpenRouter intelligence.
-          </p>
+            <div className="p-3.5 rounded-2xl bg-zinc-900 border border-primary/20 shadow-xl">
+              <Logo className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <CrucibleWordmark className="text-4xl sm:text-5xl text-white block leading-none" />
+              <p className="text-xs text-primary/80 uppercase tracking-widest">
+                Reasoning Orchestrator
+              </p>
+            </div>
+          </motion.div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              textAlign: "left",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#71717a",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Try asking:
-            </div>
-            <div
-              style={{
-                padding: "10px 14px",
-                background: "#121215",
-                border: "1px solid #27272a",
-                borderRadius: "8px",
-                fontSize: "13px",
-                color: "#a1a1aa",
-              }}
-            >
-              &ldquo;Check the repository package.json and tell me its
-              dependencies&rdquo;
-            </div>
-            <div
-              style={{
-                padding: "10px 14px",
-                background: "#121215",
-                border: "1px solid #27272a",
-                borderRadius: "8px",
-                fontSize: "13px",
-                color: "#a1a1aa",
-              }}
-            >
-              &ldquo;Run a shell command using bash_exec to inspect system
-              info&rdquo;
-            </div>
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-400 max-w-md mx-auto leading-relaxed">
+              Self-hostable autonomous agent execution engine with sandboxed
+              subprocesses, policy guardrails, and real-time observability.
+            </p>
           </div>
-        </motion.div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left pt-2">
+            <button
+              type="button"
+              onClick={() =>
+                handleSuggestion(
+                  "Check the repository package.json and list its dependencies",
+                )
+              }
+              className="flex flex-col gap-1.5 rounded-lg border border-white/8 hover:border-primary/30 bg-zinc-900/60 hover:bg-zinc-900 p-4 transition-all group text-left"
+            >
+              <div className="flex items-center justify-between text-xs font-semibold text-zinc-200 group-hover:text-white">
+                <span>Inspect Workspace</span>
+                <ArrowRight
+                  size={13}
+                  className="text-zinc-500 group-hover:text-primary transition-colors"
+                />
+              </div>
+              <span className="text-xs text-zinc-500 group-hover:text-zinc-400">
+                &ldquo;Check repository package.json and list
+                dependencies&rdquo;
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleSuggestion(
+                  "Run a shell command using bash_exec to inspect system info",
+                )
+              }
+              className="flex flex-col gap-1.5 rounded-lg border border-white/8 hover:border-primary/30 bg-zinc-900/60 hover:bg-zinc-900 p-4 transition-all group text-left"
+            >
+              <div className="flex items-center justify-between text-xs font-semibold text-zinc-200 group-hover:text-white">
+                <span>Execute Bash Subprocess</span>
+                <ArrowRight
+                  size={13}
+                  className="text-zinc-500 group-hover:text-primary transition-colors"
+                />
+              </div>
+              <span className="text-xs text-zinc-500 group-hover:text-zinc-400">
+                &ldquo;Run a shell command using bash_exec to inspect system
+                info&rdquo;
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="max-w-3xl mx-auto w-full pt-4">
+          <PromptInput
+            value={input}
+            onChange={setInput}
+            onSubmit={() => {
+              void handleSubmit();
+            }}
+            isLoading={sending}
+            placeholder="Type your instruction to start a new session..."
+            disabled={sending}
+          />
+        </div>
       </main>
     );
   }
 
   const messages = session.messages || [];
 
+  const pendingTool = React.useMemo(() => {
+    if (activeToolCalls.length > 0) return activeToolCalls[0];
+    const msgs = session.messages || [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m.toolCalls && m.toolCalls.length > 0) {
+        return m.toolCalls[0];
+      }
+    }
+    return undefined;
+  }, [activeToolCalls, session.messages]);
+
   return (
-    <main
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        background: "#09090b",
-        position: "relative",
-      }}
-    >
-      {/* Session Header */}
-      <header
-        style={{
-          padding: "14px 24px",
-          borderBottom: "1px solid #27272a",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: "rgba(9, 9, 11, 0.85)",
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div>
-          <h2
-            style={{
-              fontSize: "15px",
-              fontWeight: 600,
-              color: "#f4f4f5",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {session.title || session.id}
+    <main className="flex-1 flex flex-col h-screen bg-zinc-950 font-sans relative overflow-hidden">
+      {/* Session Top Bar */}
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-white/8 bg-zinc-950/85 px-6 backdrop-blur-xl">
+        <div className="flex flex-col">
+          <h2 className="text-sm font-semibold tracking-tight text-white flex items-center gap-2">
+            <span>{session.title || session.id}</span>
           </h2>
-          <p style={{ fontSize: "11px", color: "#71717a" }}>ID: {session.id}</p>
+          <span className="text-[10px] text-zinc-500">ID: {session.id}</span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="flex items-center gap-3">
           {/* Stream Connection Indicator */}
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              fontSize: "11px",
-              padding: "4px 8px",
-              borderRadius: "5px",
-              background: isStreamConnected
-                ? "rgba(34, 197, 94, 0.1)"
-                : "rgba(234, 179, 8, 0.1)",
-              border: `1px solid ${isStreamConnected ? "rgba(34, 197, 94, 0.25)" : "rgba(234, 179, 8, 0.25)"}`,
-              color: isStreamConnected ? "#22c55e" : "#eab308",
-              fontWeight: 600,
-            }}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border ${
+              isStreamConnected
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+            }`}
           >
             <Radio
-              size={11}
+              size={12}
               className={session.status === "running" ? "animate-pulse" : ""}
             />
-            <span>{isStreamConnected ? "STREAM ACTIVE" : "CONNECTING"}</span>
+            <span>{isStreamConnected ? "STREAM LIVE" : "CONNECTING"}</span>
           </div>
 
-          <div
-            style={{
-              fontSize: "11px",
-              padding: "4px 9px",
-              borderRadius: "5px",
-              background: "#18181b",
-              border: "1px solid #27272a",
-              color: "#a1a1aa",
-            }}
+          {/* Sandbox Info Panel Trigger */}
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={() => setShowSandboxInfo(true)}
+            className="gap-1.5 border-white/10 bg-zinc-900 text-zinc-300 hover:text-white"
           >
+            <Shield size={12} className="text-primary" />
+            <span>Sandbox Info</span>
+          </Button>
+
+          {/* Turn Counter */}
+          <span className="hidden sm:inline-flex px-2 py-0.5 rounded-md bg-zinc-900 border border-white/8 text-[11px] text-zinc-400">
             Turns: {session.metadata?.turnCount || 0}
-          </div>
+          </span>
 
           {/* Status Badge */}
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              padding: "4px 9px",
-              borderRadius: "5px",
-              background:
-                session.status === "running"
-                  ? "rgba(234, 179, 8, 0.12)"
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border ${
+              session.status === "running"
+                ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                : session.status === "awaiting_human"
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
                   : session.status === "error"
-                    ? "rgba(239, 68, 68, 0.12)"
-                    : "rgba(34, 197, 94, 0.12)",
-              color:
-                session.status === "running"
-                  ? "#eab308"
-                  : session.status === "error"
-                    ? "#ef4444"
-                    : "#22c55e",
-              border: `1px solid ${
-                session.status === "running"
-                  ? "rgba(234, 179, 8, 0.28)"
-                  : session.status === "error"
-                    ? "rgba(239, 68, 68, 0.28)"
-                    : "rgba(34, 197, 94, 0.28)"
-              }`,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-            }}
+                    ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                    : "bg-primary/10 text-primary border-primary/30"
+            }`}
           >
-            {session.status === "running" && (
-              <motion.div
-                animate={{ scale: [1, 1.3, 1] }}
-                transition={{ repeat: Infinity, duration: 1.2 }}
-                style={{
-                  width: "5px",
-                  height: "5px",
-                  borderRadius: "50%",
-                  background: "#eab308",
-                }}
-              />
-            )}
-            <span>{session.status}</span>
-          </div>
+            {session.status}
+          </span>
         </div>
       </header>
 
       {/* Messages Scroll Area */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "20px 24px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {messages.length === 0 ? (
-          <div
-            style={{
-              margin: "auto",
-              textAlign: "center",
-              maxWidth: "400px",
-              color: "#71717a",
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-4">
+        {messages.map((message, index) => (
+          <MessageBubble
+            key={`${message.role}-${index}`}
+            message={message}
+            index={index}
+          />
+        ))}
+
+        {/* Guardrail Human Review Checkpoint Card */}
+        {session.status === "awaiting_human" && (
+          <GuardrailApproval
+            sessionId={session.id}
+            toolName={pendingTool?.name || "bash_exec"}
+            toolCallId={pendingTool?.id}
+            args={pendingTool?.arguments}
+            policyReason="Irreversible Action Policy: Destructive filesystem or root command requires manual confirmation."
+            onDecisionComplete={async (action) => {
+              try {
+                const refreshed = await orchestratorClient.getSession(
+                  session.id,
+                );
+                setStatus(refreshed.status as any);
+              } catch {}
             }}
-          >
-            <p
-              style={{
-                fontSize: "14px",
-                fontWeight: 500,
-                color: "#a1a1aa",
-                marginBottom: "6px",
-              }}
-            >
-              Start reasoning in this session
-            </p>
-            <p style={{ fontSize: "12px", lineHeight: 1.5 }}>
-              Ask a question, perform calculations, or execute shell commands
-              via `bash_exec`.
-            </p>
-          </div>
-        ) : (
-          messages.map((msg, idx) => (
-            <MessageBubble
-              key={`${msg.role}_${idx}`}
-              message={msg}
-              index={idx}
-            />
-          ))
+          />
         )}
 
         {/* Real-time Streaming Output Panel */}
@@ -470,23 +383,10 @@ export function ChatWindow({
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "10px 14px",
-                borderRadius: "8px",
-                background: "#121215",
-                border: "1px solid #27272a",
-                width: "fit-content",
-                margin: "12px 0",
-                color: "#a1a1aa",
-                fontSize: "13px",
-              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-900 border border-white/8 text-zinc-400 text-xs w-fit my-3"
             >
-              <Loader2 size={15} className="animate-spin" />
-              <span>Reasoning & executing tools...</span>
+              <Loader2 size={14} className="animate-spin text-primary" />
+              <span>Reasoning & executing tools in sandbox...</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -496,20 +396,9 @@ export function ChatWindow({
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "12px 16px",
-              borderRadius: "8px",
-              background: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              color: "#f87171",
-              fontSize: "13px",
-              margin: "12px 0",
-            }}
+            className="flex items-center gap-2.5 p-4 rounded-lg bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs my-3"
           >
-            <AlertCircle size={16} />
+            <AlertCircle size={16} className="text-rose-400 shrink-0" />
             <span>{error}</span>
           </motion.div>
         )}
@@ -517,92 +406,26 @@ export function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Composer */}
-      <div
-        style={{
-          padding: "16px 24px 20px",
-          borderTop: "1px solid #27272a",
-          background: "#09090b",
-        }}
-      >
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            position: "relative",
-            background: "#121215",
-            border: "1px solid #27272a",
-            borderRadius: "10px",
-            padding: "8px 12px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            transition: "border 0.15s ease",
+      {/* Bottom Input Area */}
+      <div className="border-t border-white/8 bg-zinc-950/90 px-4 sm:px-8 py-4 backdrop-blur-xl">
+        <PromptInput
+          value={input}
+          onChange={setInput}
+          onSubmit={() => {
+            void handleSubmit();
           }}
-        >
-          <textarea
-            ref={textareaRef}
-            rows={2}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message or instruction... (Enter to send, Shift+Enter for newline)"
-            disabled={sending}
-            style={{
-              width: "100%",
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "#f4f4f5",
-              fontSize: "14px",
-              resize: "none",
-              fontFamily: "inherit",
-              lineHeight: 1.5,
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingTop: "4px",
-            }}
-          >
-            <span style={{ fontSize: "11px", color: "#52525b" }}>
-              Press <b>Enter</b> to send
-            </span>
-
-            <motion.button
-              type="submit"
-              disabled={!input.trim() || sending}
-              whileHover={{ scale: input.trim() && !sending ? 1.03 : 1 }}
-              whileTap={{ scale: input.trim() && !sending ? 0.96 : 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                background: input.trim() && !sending ? "#ffffff" : "#27272a",
-                color: input.trim() && !sending ? "#09090b" : "#71717a",
-                border: "none",
-                borderRadius: "6px",
-                padding: "6px 14px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: input.trim() && !sending ? "pointer" : "not-allowed",
-                transition: "background 0.15s ease, color 0.15s ease",
-              }}
-            >
-              {sending ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <Send size={13} />
-              )}
-              <span>Send</span>
-            </motion.button>
-          </div>
-        </form>
+          isLoading={sending}
+          placeholder="Type your message or instruction..."
+          disabled={sending}
+        />
       </div>
+
+      {/* Sandbox Isolation & Resource Budget Modal */}
+      <SandboxInfoPanel
+        isOpen={showSandboxInfo}
+        onClose={() => setShowSandboxInfo(false)}
+        sessionId={session.id}
+      />
     </main>
   );
 }

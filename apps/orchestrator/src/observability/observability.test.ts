@@ -221,6 +221,8 @@ describe("Health Check API Pattern", () => {
       checkOpenRouter: async () => true,
       checkExecutor: async () => true,
       checkDisk: async () => true,
+      checkPostgres: async () => ({ ok: true, latencyMs: 1 }),
+      checkRedis: async () => ({ ok: true, latencyMs: 1 }),
     });
 
     expect(result.statusCode).toBe(200);
@@ -239,6 +241,8 @@ describe("Health Check API Pattern", () => {
       checkOpenRouter: async () => false,
       checkExecutor: async () => true,
       checkDisk: async () => true,
+      checkPostgres: async () => ({ ok: true, latencyMs: 1 }),
+      checkRedis: async () => ({ ok: true, latencyMs: 1 }),
     });
 
     expect(result.statusCode).toBe(503);

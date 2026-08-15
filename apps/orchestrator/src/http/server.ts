@@ -27,6 +27,7 @@ import {
   RedisSessionStore,
 } from "../persistence";
 import { logger } from "../observability/logger";
+import { GuardrailRouteHandler } from "./routes/guardrails";
 
 export interface HttpServerOptions {
   port?: number;
@@ -39,6 +40,7 @@ export function createHttpRouter(
   sseHandler: SseStreamHandler = new SseStreamHandler(sessionManager),
 ) {
   const handler = new SessionRouteHandler(sessionManager);
+  const guardrailHandler = new GuardrailRouteHandler(sessionManager);
 
   return async (
     req: Request,
@@ -217,6 +219,14 @@ export function createHttpRouter(
       }
     }
 
+    // Route: /sandbox/info
+    if (
+      normalizedPath === "/sandbox/info" ||
+      normalizedPath === "/sandbox/info/"
+    ) {
+      return guardrailHandler.getSandboxInfo();
+    }
+
     // Route: /sessions/:id/messages
     const messagesMatch = normalizedPath.match(
       /^\/sessions\/([^/]+)\/messages$/,
@@ -228,14 +238,25 @@ export function createHttpRouter(
       }
     }
 
-    // Route: /sessions/:id/approval
+    // Route: /sessions/:id/approval and /sessions/:id/guardrails/approval
     const approvalMatch = normalizedPath.match(
-      /^\/sessions\/([^/]+)\/approval$/,
+      /^\/sessions\/([^/]+)\/(?:guardrails\/)?approval$/,
     );
     if (approvalMatch) {
       const sessionId = approvalMatch[1];
       if (method === "POST") {
-        return handler.approveAction(sessionId, req);
+        return guardrailHandler.handleApproval(sessionId, req);
+      }
+    }
+
+    // Route: /sessions/:id/sandbox
+    const sessionSandboxMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/sandbox$/,
+    );
+    if (sessionSandboxMatch) {
+      const sessionId = sessionSandboxMatch[1];
+      if (method === "GET") {
+        return guardrailHandler.getSandboxInfo(sessionId);
       }
     }
 

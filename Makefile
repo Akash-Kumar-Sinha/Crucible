@@ -20,6 +20,10 @@ help:
 	@echo "  make fmt         - Format all code (Prettier for TS/JSON + cargo fmt for Rust)"
 	@echo "  make clean       - Clean all build outputs, caches, and Cargo target directory"
 	@echo ""
+	@echo "Self-Hosted Docker Stack:"
+	@echo "  make docker-up   - Start full self-hosted container stack (Postgres, Redis, Rust, Bun, Web)"
+	@echo "  make docker-down - Stop self-hosted container stack"
+	@echo ""
 	@echo "Testing:"
 	@echo "  make test        - Run all test suites across the repository (Bun/Turborepo + Cargo)"
 	@echo "  make test-unit   - Run fast local unit tests directly via Bun (offline)"
@@ -75,6 +79,18 @@ clean:
 	rm -rf .turbo dist apps/*/dist packages/*/dist target
 
 # -------------------------------------------------------------
+# Self-Hosted Docker Distribution
+# -------------------------------------------------------------
+up:
+	docker compose up -d
+
+up--build:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+# -------------------------------------------------------------
 # Testing
 # -------------------------------------------------------------
 test:
@@ -82,7 +98,7 @@ test:
 	cargo test
 
 test-unit:
-	bun test packages apps/orchestrator/src/session apps/orchestrator/src/http apps/orchestrator/src/observability apps/orchestrator/src/tools apps/orchestrator/src/execution apps/orchestrator/src/agent/loop.test.ts apps/web/src/lib
+	bun test packages apps/orchestrator/src/session apps/orchestrator/src/http apps/orchestrator/src/observability apps/orchestrator/src/tools apps/orchestrator/src/execution apps/orchestrator/src/guardrails apps/orchestrator/src/agent/loop.test.ts apps/web/src/lib apps/web/src/components
 
 test-rust:
 	cargo test

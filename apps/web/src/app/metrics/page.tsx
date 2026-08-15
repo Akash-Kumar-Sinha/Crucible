@@ -2,8 +2,38 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Activity,
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Copy,
+  Check,
+  Layers,
+  Radio,
+  Server,
+  Shield,
+  Terminal,
+  Zap,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { LatencyChart, type SpanMetric } from "@/components/LatencyChart";
 import { ErrorRatePanel } from "@/components/ErrorRatePanel";
+import { Logo, CrucibleWordmark } from "@/components/Logo";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ProximityGlowCard } from "@/components/ui/proximity-glow";
+import { RadialSeparator } from "@/components/ui/radial-separator";
+import { cn } from "@/lib/utils";
 
 interface SystemMetrics {
   timestamp: number;
@@ -156,120 +186,209 @@ export default function MetricsDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans">
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-zinc-800 bg-zinc-950/80 px-6 backdrop-blur">
-        <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+      {/* Sticky Premium Header */}
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/8 bg-zinc-950/80 px-6 sm:px-8 backdrop-blur-xl">
+        <div className="flex items-center gap-6">
           <Link
             href="/"
-            className="flex items-center gap-2 text-sm font-semibold text-zinc-200 hover:text-white transition-colors"
+            className="flex items-center gap-3 text-sm font-semibold text-zinc-200 transition-colors hover:text-white group"
           >
-            <span className="font-mono text-emerald-400">CRUCIBLE</span>
-            <span className="text-zinc-500">/</span>
-            <span>Metrics & OpenTelemetry</span>
+            <Logo className="w-7 h-7 text-primary transition-transform group-hover:scale-105" />
+            <CrucibleWordmark className="text-2xl text-white group-hover:text-primary transition-colors leading-none" />
+            <span className="text-zinc-700 font-light hidden sm:inline">/</span>
+            <span className="text-xs uppercase tracking-wider text-zinc-400 font-medium hidden sm:inline">
+              Telemetry & Traces
+            </span>
           </Link>
 
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${
+          <div
+            className={cn(
+              "hidden md:inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               isConnected
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                : "border-zinc-700 bg-zinc-800 text-zinc-400"
-            }`}
+                ? "border-primary/20 bg-primary/10 text-primary"
+                : "border-zinc-800 bg-zinc-900 text-zinc-500",
+            )}
           >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                isConnected ? "bg-emerald-400 animate-pulse" : "bg-zinc-500"
-              }`}
-            />
-            {isConnected ? "OTel Live Stream" : "Disconnected"}
-          </span>
+            <span className="relative flex h-2 w-2">
+              {isConnected && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              )}
+              <span
+                className={cn(
+                  "relative inline-flex h-2 w-2 rounded-full",
+                  isConnected ? "bg-primary" : "bg-zinc-600",
+                )}
+              />
+            </span>
+            <span>{isConnected ? "W3C Live Stream" : "Offline"}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400">Filter Session:</span>
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-1.5 backdrop-blur-md hover:border-white/20 transition-all text-xs">
+            <Filter size={13} className="text-zinc-400" />
+            <span className="text-zinc-500 hidden md:inline">Scope:</span>
             <select
               value={selectedSessionId}
               onChange={(e) => setSelectedSessionId(e.target.value)}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-200 focus:border-emerald-500 focus:outline-none"
+              className="bg-transparent text-xs text-zinc-200 outline-none cursor-pointer pr-1"
             >
-              <option value="all">All Sessions (Global)</option>
+              <option value="all" className="bg-zinc-900 text-zinc-100">
+                All Sessions (Global)
+              </option>
               {sessionIds.map((id) => (
-                <option key={id} value={id}>
+                <option
+                  key={id}
+                  value={id}
+                  className="bg-zinc-900 text-zinc-100"
+                >
                   {id}
                 </option>
               ))}
             </select>
           </div>
 
-          <Link
-            href="/"
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-          >
-            Back to Chat
+          <Link href="/workspace">
+            <Button size="sm" className="gap-1.5">
+              <span>Open Workspace</span>
+            </Button>
+          </Link>
+
+          <Link href="/">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-white/10 bg-zinc-900/40 hover:bg-zinc-800 text-zinc-300"
+            >
+              <ArrowLeft size={13} />
+              <span className="hidden sm:inline">Home</span>
+            </Button>
           </Link>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-sm">
-            <div className="text-xs font-medium text-zinc-400">
-              Active Concurrent Traces
+      <main className="max-w-7xl mx-auto p-6 sm:p-8 space-y-8">
+        {/* KPI Highlight Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <ProximityGlowCard
+            radius={240}
+            intensity={0.9}
+            className="border border-white/8 bg-zinc-900/60"
+            title="Active Traces"
+            subtitle="In-flight asynchronous spans"
+          >
+            <div className="flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <div className="p-2 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                  <Activity size={18} />
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-primary font-semibold px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                  Live Concurrency
+                </span>
+              </div>
+              <div className="mt-4">
+                <div className="font-mono text-3xl font-bold tracking-tight text-white">
+                  {activeMetrics?.activeTraceCount ?? 0}
+                </div>
+              </div>
             </div>
-            <div className="mt-2 font-mono text-2xl font-bold text-emerald-400">
-              {activeMetrics?.activeTraceCount ?? 0}
-            </div>
-            <div className="mt-1 text-[11px] text-zinc-400">
-              In-flight asynchronous spans
-            </div>
-          </div>
+          </ProximityGlowCard>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-sm">
-            <div className="text-xs font-medium text-zinc-400">
-              Mean Span Latency
+          <ProximityGlowCard
+            radius={240}
+            intensity={0.9}
+            className="border border-white/8 bg-zinc-900/60"
+            title="Mean Latency"
+            subtitle="Average per-span duration"
+          >
+            <div className="flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <div className="p-2 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                  <Clock size={18} />
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-primary font-semibold px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                  Mean Duration
+                </span>
+              </div>
+              <div className="mt-4 flex items-baseline gap-1">
+                <div className="font-mono text-3xl font-bold tracking-tight text-white">
+                  {activeMetrics?.meanLatencyMs ?? 0}
+                </div>
+                <span className="text-sm font-medium text-zinc-500">ms</span>
+              </div>
             </div>
-            <div className="mt-2 font-mono text-2xl font-bold text-zinc-100">
-              {activeMetrics?.meanLatencyMs ?? 0}
-              <span className="text-sm font-normal text-zinc-400 ml-1">ms</span>
-            </div>
-            <div className="mt-1 text-[11px] text-zinc-400">
-              Average execution duration
-            </div>
-          </div>
+          </ProximityGlowCard>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-sm">
-            <div className="text-xs font-medium text-zinc-400">
-              P95 Latency Threshold
+          <ProximityGlowCard
+            radius={240}
+            intensity={0.9}
+            className="border border-white/8 bg-zinc-900/60"
+            title="P95 Latency"
+            subtitle="95th percentile execution tail"
+          >
+            <div className="flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <Zap size={18} />
+                </div>
+                <span className="text-[10px] uppercase tracking-wider text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                  Tail Threshold
+                </span>
+              </div>
+              <div className="mt-4 flex items-baseline gap-1">
+                <div className="font-mono text-3xl font-bold tracking-tight text-amber-300">
+                  {activeMetrics?.p95LatencyMs ?? 0}
+                </div>
+                <span className="text-sm font-medium text-zinc-500">ms</span>
+              </div>
             </div>
-            <div className="mt-2 font-mono text-2xl font-bold text-amber-400">
-              {activeMetrics?.p95LatencyMs ?? 0}
-              <span className="text-sm font-normal text-zinc-400 ml-1">ms</span>
-            </div>
-            <div className="mt-1 text-[11px] text-zinc-400">
-              95th percentile latency
-            </div>
-          </div>
+          </ProximityGlowCard>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-sm">
-            <div className="text-xs font-medium text-zinc-400">
-              Tool Call Error Rate
+          <ProximityGlowCard
+            radius={240}
+            intensity={0.9}
+            className="border border-white/8 bg-zinc-900/60"
+            title="Tool Error Rate"
+            subtitle={`${activeMetrics?.toolCallsFailed ?? 0} failed / ${activeMetrics?.toolCallsTotal ?? 0} calls`}
+          >
+            <div className="flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <div
+                  className={`p-2 rounded-xl border ${
+                    (activeMetrics?.toolErrorRate ?? 0) === 0
+                      ? "bg-primary/10 border-primary/20 text-primary"
+                      : "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                  }`}
+                >
+                  <Shield size={18} />
+                </div>
+                <span
+                  className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${
+                    (activeMetrics?.toolErrorRate ?? 0) === 0
+                      ? "bg-primary/10 border-primary/20 text-primary"
+                      : "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                  }`}
+                >
+                  Reliability
+                </span>
+              </div>
+              <div className="mt-4">
+                <div
+                  className={`font-mono text-3xl font-bold tracking-tight ${
+                    (activeMetrics?.toolErrorRate ?? 0) === 0
+                      ? "text-primary"
+                      : "text-rose-400"
+                  }`}
+                >
+                  {(activeMetrics?.toolErrorRate ?? 0).toFixed(1)}%
+                </div>
+              </div>
             </div>
-            <div
-              className={`mt-2 font-mono text-2xl font-bold ${
-                (activeMetrics?.toolErrorRate ?? 0) === 0
-                  ? "text-emerald-400"
-                  : "text-rose-400"
-              }`}
-            >
-              {(activeMetrics?.toolErrorRate ?? 0).toFixed(1)}%
-            </div>
-            <div className="mt-1 text-[11px] text-zinc-400">
-              {activeMetrics?.toolCallsFailed ?? 0} failed /{" "}
-              {activeMetrics?.toolCallsTotal ?? 0} calls
-            </div>
-          </div>
+          </ProximityGlowCard>
         </div>
 
+        {/* Charts & Distribution Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LatencyChart
             meanLatencyMs={activeMetrics?.meanLatencyMs ?? 0}
@@ -291,144 +410,206 @@ export default function MetricsDashboardPage() {
           />
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+        {/* Distributed Trace Explorer Table */}
+        <Card className="border border-white/8 bg-zinc-900/70 shadow-2xl">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-white/8 pb-4">
             <div>
-              <h3 className="text-sm font-semibold text-zinc-200">
-                Distributed Trace Explorer
-              </h3>
-              <p className="text-xs text-zinc-400">
-                End-to-end W3C TraceContext traces across TS Orchestrator → gRPC
+              <div className="flex items-center gap-2">
+                <Layers size={16} className="text-primary" />
+                <CardTitle className="text-base font-semibold text-white">
+                  Distributed Trace Explorer
+                </CardTitle>
+              </div>
+              <CardDescription className="text-xs text-zinc-400 mt-1">
+                End-to-end W3C TraceContext spans across TS Orchestrator → gRPC
                 → Rust Executor → Sandbox
-              </p>
+              </CardDescription>
             </div>
-            <span className="text-xs font-mono text-zinc-400">
-              {activeMetrics?.spans.length ?? 0} spans loaded
-            </span>
-          </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-white/10 text-zinc-300">
+                {activeMetrics?.spans.length ?? 0} spans recorded
+              </span>
+            </div>
+          </CardHeader>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-zinc-800 text-zinc-400 font-medium bg-zinc-900/40">
-                <tr>
-                  <th className="py-2.5 px-3">Span / Operation</th>
-                  <th className="py-2.5 px-3">Session</th>
-                  <th className="py-2.5 px-3">Duration</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">W3C Trace ID</th>
-                  <th className="py-2.5 px-3 text-right">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/60">
-                {(activeMetrics?.spans ?? []).length === 0 ? (
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-white/8 text-zinc-400 font-medium bg-zinc-950/60">
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-zinc-400">
-                      No distributed spans matching filter
-                    </td>
+                    <th className="py-3 px-4">Operation / Span Name</th>
+                    <th className="py-3 px-4">Session Scope</th>
+                    <th className="py-3 px-4">Duration</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Span ID</th>
+                    <th className="py-3 px-4 text-right">Inspect</th>
                   </tr>
-                ) : (
-                  (activeMetrics?.spans ?? [])
-                    .slice()
-                    .reverse()
-                    .map((span) => {
-                      const isExpanded = expandedTraceId === span.id;
-                      const isError = span.status === "ERROR";
-                      const sessId =
-                        (span.attributes?.sessionId as string) || "global";
+                </thead>
+                <tbody className="divide-y divide-white/5 font-sans">
+                  {(activeMetrics?.spans ?? []).length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="py-12 text-center text-zinc-500"
+                      >
+                        <Terminal
+                          size={24}
+                          className="mx-auto mb-2 opacity-40"
+                        />
+                        <p>No distributed spans recorded for current filter.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    (activeMetrics?.spans ?? [])
+                      .slice()
+                      .reverse()
+                      .map((span) => {
+                        const isExpanded = expandedTraceId === span.id;
+                        const isError = span.status === "ERROR";
+                        const sessId =
+                          (span.attributes?.sessionId as string) || "global";
 
-                      return (
-                        <React.Fragment key={span.id}>
-                          <tr className="hover:bg-zinc-900/50 transition-colors">
-                            <td className="py-2.5 px-3 font-mono font-medium text-zinc-200">
-                              <span
-                                className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                                  isError
-                                    ? "bg-rose-500"
-                                    : span.name.startsWith("tool.")
-                                      ? "bg-sky-500"
-                                      : span.name.includes("model")
-                                        ? "bg-emerald-500"
-                                        : "bg-indigo-500"
-                                }`}
-                              />
-                              {span.name}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-zinc-400">
-                              {sessId}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-zinc-300">
-                              {span.durationMs !== undefined
-                                ? `${span.durationMs}ms`
-                                : "running..."}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <span
-                                className={`rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold ${
-                                  isError
-                                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                                    : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                }`}
-                              >
-                                {span.status}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-zinc-400">
-                              <div className="flex items-center gap-1.5">
-                                <span>{span.id}</span>
-                                <button
-                                  onClick={() => handleCopyTrace(span.id)}
-                                  className="text-[10px] text-zinc-400 hover:text-zinc-200"
-                                  title="Copy span ID"
-                                >
-                                  {copiedTraceId === span.id ? "✓" : "📋"}
-                                </button>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-right">
-                              <button
-                                onClick={() =>
-                                  setExpandedTraceId(
-                                    isExpanded ? null : span.id,
-                                  )
-                                }
-                                className="text-zinc-400 hover:text-zinc-200 text-xs font-mono"
-                              >
-                                {isExpanded ? "Hide ▲" : "View ▼"}
-                              </button>
-                            </td>
-                          </tr>
-
-                          {isExpanded && (
-                            <tr className="bg-zinc-900/80">
-                              <td colSpan={6} className="p-4 space-y-2">
-                                <div className="text-xs font-semibold text-zinc-300">
-                                  Span Context & Attributes
+                        return (
+                          <React.Fragment key={span.id}>
+                            <tr className="hover:bg-white/[0.02] transition-colors group">
+                              <td className="py-3 px-4 font-medium text-zinc-200">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`h-2 w-2 rounded-full shrink-0 ${
+                                      isError ? "bg-rose-500" : "bg-primary"
+                                    }`}
+                                  />
+                                  <span className="truncate max-w-xs">
+                                    {span.name}
+                                  </span>
                                 </div>
-                                <pre className="rounded bg-black/70 p-3 font-mono text-[11px] text-zinc-300 overflow-x-auto border border-zinc-800">
-                                  {JSON.stringify(
-                                    {
-                                      id: span.id,
-                                      name: span.name,
-                                      durationMs: span.durationMs,
-                                      status: span.status,
-                                      attributes: span.attributes,
-                                      startTime: span.startTime,
-                                    },
-                                    null,
-                                    2,
+                              </td>
+                              <td className="py-3 px-4 text-zinc-400">
+                                <span className="px-2 py-0.5 rounded bg-zinc-800/60 border border-white/5">
+                                  {sessId}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-zinc-300">
+                                {span.durationMs !== undefined ? (
+                                  <span className="font-semibold text-primary">
+                                    {span.durationMs}ms
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-400 animate-pulse">
+                                    running...
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold border ${
+                                    isError
+                                      ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                      : "bg-primary/10 text-primary border-primary/30"
+                                  }`}
+                                >
+                                  {span.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-zinc-400">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-zinc-500">
+                                    {span.id.substring(0, 12)}...
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyTrace(span.id)}
+                                    className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+                                    title="Copy span ID"
+                                  >
+                                    {copiedTraceId === span.id ? (
+                                      <Check
+                                        size={12}
+                                        className="text-primary"
+                                      />
+                                    ) : (
+                                      <Copy size={12} />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={() =>
+                                    setExpandedTraceId(
+                                      isExpanded ? null : span.id,
+                                    )
+                                  }
+                                  className="font-mono text-[11px] gap-1 text-zinc-400 hover:text-white"
+                                >
+                                  <span>{isExpanded ? "Hide" : "View"}</span>
+                                  {isExpanded ? (
+                                    <ChevronUp size={12} />
+                                  ) : (
+                                    <ChevronDown size={12} />
                                   )}
-                                </pre>
+                                </Button>
                               </td>
                             </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+
+                            {isExpanded && (
+                              <tr className="bg-zinc-950/80">
+                                <td
+                                  colSpan={6}
+                                  className="p-4 sm:p-6 border-y border-white/8 space-y-3"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+                                      <Terminal
+                                        size={14}
+                                        className="text-primary"
+                                      />
+                                      <span>
+                                        W3C TraceContext Payload & OpenTelemetry
+                                        Span Envelope
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleCopyTrace(
+                                          JSON.stringify(span, null, 2),
+                                        )
+                                      }
+                                      className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
+                                    >
+                                      <Copy size={12} />
+                                      <span>Copy JSON</span>
+                                    </button>
+                                  </div>
+                                  <pre className="rounded-xl bg-zinc-900 border border-white/10 p-4 text-[11px] leading-relaxed text-zinc-300 overflow-x-auto">
+                                    {JSON.stringify(
+                                      {
+                                        id: span.id,
+                                        name: span.name,
+                                        status: span.status,
+                                        durationMs: span.durationMs,
+                                        startTime: span.startTime,
+                                        attributes: span.attributes,
+                                      },
+                                      null,
+                                      2,
+                                    )}
+                                  </pre>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

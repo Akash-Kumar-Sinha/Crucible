@@ -162,7 +162,7 @@ export default function SessionPage() {
       await orchestratorClient.deleteSession(id);
       removeSessionFromList(id);
       if (id === sessionId) {
-        router.push("/");
+        router.push("/workspace");
       }
     } catch (err: any) {
       setError(err?.message || "Failed to delete session.");
@@ -170,14 +170,7 @@ export default function SessionPage() {
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        width: "100vw",
-        height: "100vh",
-        overflow: "hidden",
-      }}
-    >
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950">
       <SessionSidebar
         sessions={sessions}
         activeSessionId={sessionId}
@@ -189,7 +182,6 @@ export default function SessionPage() {
         session={session}
         onSendMessage={handleSendMessage}
         loading={loading}
-        sending={sending}
         error={error}
       />
     </div>

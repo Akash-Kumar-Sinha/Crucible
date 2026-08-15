@@ -15,7 +15,7 @@ COPY apps/orchestrator ./apps/orchestrator
 RUN bun install --ignore-scripts
 
 WORKDIR /app/apps/orchestrator
-RUN bunx prisma generate --schema=src/persistence/postgres/schema.prisma || true
+RUN bunx prisma generate
 
 WORKDIR /app
 
