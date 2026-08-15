@@ -43,6 +43,7 @@ export interface ReadinessCheckOptions {
   checkDocker?: () => Promise<boolean>;
   checkGrpc?: () => Promise<boolean>;
   checkDisk?: () => Promise<boolean>;
+  checkKubernetes?: () => Promise<boolean>;
   checkPostgres?: () => Promise<{
     ok: boolean;
     latencyMs: number;
@@ -316,6 +317,50 @@ export async function performReadinessCheck(
       message: err.message,
     };
     overallHealthy = false;
+  }
+
+  // 7. Kubernetes Cluster API Check
+  const isK8sActive = options.executor
+    ? options.executor.name === "k8s_job"
+    : process.env.CRUCIBLE_EXECUTOR === "k8s" ||
+      process.env.CRUCIBLE_EXECUTOR === "kubernetes";
+
+  if (options.checkKubernetes || isK8sActive) {
+    const checkK8sFn =
+      options.checkKubernetes ||
+      (async () => {
+        if (options.executor && options.executor.name === "k8s_job") {
+          return options.executor.isAvailable();
+        }
+        const { KubernetesJobExecutor } =
+          await import("../execution/k8s-job-executor");
+        const k8sExec = new KubernetesJobExecutor();
+        return k8sExec.isAvailable();
+      });
+
+    const tK8s = performance.now();
+    try {
+      const k8sOk = await checkK8sFn();
+      checks["kubernetes_cluster"] = {
+        status: k8sOk ? "ok" : "degraded",
+        latencyMs: Math.round(performance.now() - tK8s),
+        message: k8sOk
+          ? "Kubernetes API cluster reachable"
+          : "Kubernetes API unreachable",
+      };
+      if (!k8sOk && isK8sActive) {
+        overallHealthy = false;
+      }
+    } catch (err: any) {
+      checks["kubernetes_cluster"] = {
+        status: "failed",
+        latencyMs: Math.round(performance.now() - tK8s),
+        message: err.message,
+      };
+      if (isK8sActive) {
+        overallHealthy = false;
+      }
+    }
   }
 
   // 7. PostgreSQL Database Check

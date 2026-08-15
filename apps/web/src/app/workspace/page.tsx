@@ -7,10 +7,12 @@ import { useSessionStore } from "../../stores/session-store";
 import { SessionSidebar } from "../../components/SessionSidebar";
 import { ChatWindow } from "../../components/ChatWindow";
 import { SetupWizard } from "../../components/SetupWizard";
+import { readTenantScope } from "../../config/tenant-scope";
 
 export default function WorkspacePage() {
   const router = useRouter();
   const [showFirstRunWizard, setShowFirstRunWizard] = React.useState(false);
+  const [activeScope, setActiveScope] = React.useState(() => readTenantScope());
   const sessions = useSessionStore((s) => s.sessions);
   const loading = useSessionStore((s) => s.isLoading);
   const setSessions = useSessionStore((s) => s.setSessions);
@@ -23,11 +25,9 @@ export default function WorkspacePage() {
   const fetchSessions = React.useCallback(async () => {
     try {
       setLoading(true);
-      const list = await orchestratorClient.listSessions();
+      const list = await orchestratorClient.listSessionsWithScope(activeScope);
       setSessions(list);
-      if (list.length > 0) {
-        router.push(`/session/${list[list.length - 1].id}`);
-      } else {
+      if (list.length === 0) {
         const hasKey =
           typeof window !== "undefined" &&
           Boolean(localStorage.getItem("crucible_api_key"));
@@ -43,7 +43,7 @@ export default function WorkspacePage() {
     } finally {
       setLoading(false);
     }
-  }, [router, setSessions, setLoading, setError]);
+  }, [router, activeScope, setSessions, setLoading, setError]);
 
   React.useEffect(() => {
     fetchSessions();
@@ -52,7 +52,11 @@ export default function WorkspacePage() {
   const handleCreateSession = async () => {
     try {
       setError(null);
-      const created = await orchestratorClient.createSession();
+      const created = await orchestratorClient.createSession(
+        undefined,
+        undefined,
+        activeScope,
+      );
       addSessionToList({
         id: created.id,
         title: created.title,
@@ -86,8 +90,12 @@ export default function WorkspacePage() {
   const handleSendMessageFromEmpty = async (text: string) => {
     try {
       setError(null);
-      const title = text.length > 30 ? text.slice(0, 30) + "..." : text;
-      const created = await orchestratorClient.createSession(title);
+      const title = text.length > 35 ? text.slice(0, 35) + "..." : text;
+      const created = await orchestratorClient.createSession(
+        title,
+        undefined,
+        activeScope,
+      );
       addSessionToList({
         id: created.id,
         title: created.title,
@@ -99,21 +107,24 @@ export default function WorkspacePage() {
         createdAt: created.createdAt,
         updatedAt: created.createdAt,
       });
-      router.push(`/session/${created.id}`);
-      // Asynchronously trigger the message on the newly created session
-      await orchestratorClient.sendMessage(created.id, text);
+      router.push(
+        `/session/${created.id}?initialPrompt=${encodeURIComponent(text)}`,
+      );
     } catch (err: any) {
       setError(err?.message || "Failed to create session and dispatch prompt.");
     }
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950">
       <SessionSidebar
         sessions={sessions}
         onCreateSession={handleCreateSession}
         onDeleteSession={handleDeleteSession}
         loading={loading}
+        tenantId={activeScope.tenantId}
+        namespace={activeScope.namespace}
+        onScopeChange={setActiveScope}
       />
       <ChatWindow
         session={null}
@@ -123,6 +134,9 @@ export default function WorkspacePage() {
       <SetupWizard
         isOpen={showFirstRunWizard}
         onClose={() => setShowFirstRunWizard(false)}
+        onConfigSaved={({ tenantId, namespace }) =>
+          setActiveScope({ tenantId, namespace })
+        }
         isFirstRun={true}
       />
     </div>

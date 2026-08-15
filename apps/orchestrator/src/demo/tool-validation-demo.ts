@@ -157,7 +157,7 @@ async function verifyToolValidationAndEnvelope() {
     defaultModel = "mock-model";
     private stepCount = 0;
 
-    async complete(request: ModelRequest): Promise<ModelResponse> {
+    async complete(_request: ModelRequest): Promise<ModelResponse> {
       this.stepCount++;
       if (this.stepCount === 1) {
         return {

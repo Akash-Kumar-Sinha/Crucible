@@ -1,23 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { orchestratorClient } from "../../../api/orchestrator-client";
 import { useSessionStore } from "../../../stores/session-store";
 import { SessionSidebar } from "../../../components/SessionSidebar";
 import { ChatWindow } from "../../../components/ChatWindow";
+import { readTenantScope } from "../../../config/tenant-scope";
 
 export default function SessionPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const sessionId = params.id as string;
+  const [activeScope, setActiveScope] = React.useState(() => readTenantScope());
 
   // Zustand atomic selective subscriptions
   const session = useSessionStore((s) => s.currentSession);
   const sessions = useSessionStore((s) => s.sessions);
   const loading = useSessionStore((s) => s.isLoading);
-  const sending = useSessionStore((s) => s.isSending);
   const error = useSessionStore((s) => s.error);
+  const isStreamConnected = useSessionStore((s) => s.isStreamConnected);
 
   const setCurrentSessionId = useSessionStore((s) => s.setCurrentSessionId);
   const setCurrentSession = useSessionStore((s) => s.setCurrentSession);
@@ -31,7 +34,50 @@ export default function SessionPage() {
   const setError = useSessionStore((s) => s.setError);
   const removeSessionFromList = useSessionStore((s) => s.removeSessionFromList);
 
-  // Synchronizing session data with effect cleanup and AbortController
+  const initialPromptHandledRef = React.useRef(false);
+
+  const handleSendMessage = React.useCallback(
+    async (message: string) => {
+      setSending(true);
+      setError(null);
+
+      // Optimistically update message stream in Zustand store
+      addMessageToCurrentSession({ role: "user", content: message });
+
+      try {
+        await orchestratorClient.sendMessage(sessionId, message);
+        const [updatedSession, updatedList] = await Promise.all([
+          orchestratorClient.getSession(sessionId),
+          orchestratorClient.listSessions(),
+        ]);
+        setCurrentSession(updatedSession);
+        setSessions(updatedList);
+      } catch (err: any) {
+        setError(
+          err?.message ||
+            "Failed to dispatch message to orchestrator. Check your API key and connection.",
+        );
+        try {
+          const refreshed = await orchestratorClient.getSession(sessionId);
+          setCurrentSession(refreshed);
+        } catch {
+          // ignore
+        }
+      } finally {
+        setSending(false);
+      }
+    },
+    [
+      sessionId,
+      addMessageToCurrentSession,
+      setCurrentSession,
+      setSessions,
+      setSending,
+      setError,
+    ],
+  );
+
+  // Synchronizing session data with effect cleanup and initial prompt handling
   React.useEffect(() => {
     if (!sessionId) return;
     setCurrentSessionId(sessionId);
@@ -44,12 +90,20 @@ export default function SessionPage() {
       try {
         const [sessionDetail, sessionList] = await Promise.all([
           orchestratorClient.getSession(sessionId),
-          orchestratorClient.listSessions(),
+          orchestratorClient.listSessionsWithScope(activeScope),
         ]);
 
         if (isSubscribed) {
           setCurrentSession(sessionDetail);
           setSessions(sessionList);
+
+          // Handle initial prompt from searchParams if passed from empty workspace
+          const initialPrompt = searchParams.get("initialPrompt");
+          if (initialPrompt && !initialPromptHandledRef.current) {
+            initialPromptHandledRef.current = true;
+            router.replace(`/session/${sessionId}`);
+            void handleSendMessage(initialPrompt);
+          }
         }
       } catch (err: any) {
         if (isSubscribed) {
@@ -72,6 +126,10 @@ export default function SessionPage() {
     };
   }, [
     sessionId,
+    searchParams,
+    router,
+    handleSendMessage,
+    activeScope,
     setCurrentSessionId,
     setCurrentSession,
     setSessions,
@@ -79,63 +137,36 @@ export default function SessionPage() {
     setError,
   ]);
 
-  // Polling synchronization while in running state
+  // Fallback polling synchronization ONLY if SSE stream is disconnected
   React.useEffect(() => {
-    if (!session || session.status !== "running") return;
+    if (!session || session.status !== "running" || isStreamConnected) return;
 
     let isSubscribed = true;
     const interval = setInterval(async () => {
       try {
         const updated = await orchestratorClient.getSession(sessionId);
-        if (isSubscribed) {
+        if (isSubscribed && updated.status !== "running") {
           setCurrentSession(updated);
         }
       } catch {
         // ignore background poll errors
       }
-    }, 1500);
+    }, 2500);
 
     return () => {
       isSubscribed = false;
       clearInterval(interval);
     };
-  }, [sessionId, session, setCurrentSession]);
-
-  const handleSendMessage = async (message: string) => {
-    setSending(true);
-    setError(null);
-
-    // Optimistically update message stream in Zustand store
-    addMessageToCurrentSession({ role: "user", content: message });
-
-    try {
-      await orchestratorClient.sendMessage(sessionId, message);
-      const [updatedSession, updatedList] = await Promise.all([
-        orchestratorClient.getSession(sessionId),
-        orchestratorClient.listSessions(),
-      ]);
-      setCurrentSession(updatedSession);
-      setSessions(updatedList);
-    } catch (err: any) {
-      setError(
-        err?.message ||
-          "Failed to dispatch message to orchestrator. Check your API key and connection.",
-      );
-      try {
-        const refreshed = await orchestratorClient.getSession(sessionId);
-        setCurrentSession(refreshed);
-      } catch {
-        // ignore
-      }
-    } finally {
-      setSending(false);
-    }
-  };
+  }, [sessionId, session, isStreamConnected, setCurrentSession]);
 
   const handleCreateSession = async () => {
     try {
       setError(null);
-      const created = await orchestratorClient.createSession();
+      const created = await orchestratorClient.createSession(
+        undefined,
+        undefined,
+        activeScope,
+      );
       addSessionToList({
         id: created.id,
         title: created.title,
@@ -177,6 +208,9 @@ export default function SessionPage() {
         onCreateSession={handleCreateSession}
         onDeleteSession={handleDeleteSession}
         loading={loading}
+        tenantId={activeScope.tenantId}
+        namespace={activeScope.namespace}
+        onScopeChange={setActiveScope}
       />
       <ChatWindow
         session={session}

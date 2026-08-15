@@ -1,5 +1,3 @@
-import { spawn } from "bun";
-
 interface DemoSuiteItem {
   name: string;
   command: string;
@@ -20,6 +18,11 @@ const demos: DemoSuiteItem[] = [
     env: { OPENROUTER_MODEL: "mock", CRUCIBLE_MOCK_PROVIDER: "true" },
   },
   {
+    name: "FIFO Queueing & Burst Admission Control",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-session-queue.ts"],
+  },
+  {
     name: "Distributed Tracing (W3C TraceContext & OTel Spans)",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-distributed-tracing.ts"],
@@ -38,6 +41,11 @@ const demos: DemoSuiteItem[] = [
     name: "UI Integration: Sandbox & Guardrail Visibility (Approve/Deny & Resource Budgets)",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-ui-visibility.ts"],
+  },
+  {
+    name: "Kubernetes Job Sandbox Execution & Restricted PodSecurity",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-k8s-jobs.ts"],
   },
   {
     name: "Rust Sandboxed Process Execution & Isolation Engine",

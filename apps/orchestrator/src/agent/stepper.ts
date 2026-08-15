@@ -13,6 +13,8 @@ export async function stepAwaitingModel(
     model?: string;
     temperature?: number;
     guardrails?: GuardrailChain;
+    onToken?: (token: string) => void;
+    onThought?: (thought: string) => void;
   } = {},
 ): Promise<void> {
   const ctx = stateMachine.getContext();
@@ -36,6 +38,8 @@ export async function stepAwaitingModel(
             model: options.model,
             temperature: options.temperature,
             systemPrompt: ctx.systemPrompt,
+            onToken: options.onToken,
+            onThought: options.onThought,
           });
 
           let requiresHuman = false;

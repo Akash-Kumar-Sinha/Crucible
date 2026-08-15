@@ -1,4 +1,5 @@
 import type { AgentMessage, ToolCall, ToolResult } from "./orchestrator-client";
+import { getOrchestratorUrl } from "../config/orchestrator-url";
 
 export interface StreamEventMap {
   connected: { status: string; state: string; messageCount: number };
@@ -50,10 +51,7 @@ export class SessionStreamClient {
 
   constructor(sessionId: string, options: StreamClientOptions = {}) {
     this.sessionId = sessionId;
-    this.baseUrl =
-      options.baseUrl ||
-      process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ||
-      "http://localhost:4000";
+    this.baseUrl = (options.baseUrl || getOrchestratorUrl()).replace(/\/$/, "");
     this.transport = options.transport || "sse";
     this.reconnect = options.reconnect !== false;
     this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
@@ -75,11 +73,12 @@ export class SessionStreamClient {
   }
 
   private connectSse(): void {
-    if (typeof window === "undefined" && typeof EventSource === "undefined") {
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
       return;
     }
 
     this.disconnect();
+    this.manuallyClosed = false;
     const url = `${this.baseUrl}/api/sessions/${this.sessionId}/stream`;
 
     try {
@@ -93,9 +92,15 @@ export class SessionStreamClient {
 
       es.onerror = () => {
         this.setConnected(false);
-        es.close();
-        this.eventSource = null;
-        this.scheduleReconnect();
+        if (!this.manuallyClosed) {
+          try {
+            es.close();
+          } catch {
+            // ignore
+          }
+          this.eventSource = null;
+          this.scheduleReconnect();
+        }
       };
 
       // Register event listeners on EventSource
@@ -116,15 +121,15 @@ export class SessionStreamClient {
       ];
 
       for (const eventType of eventTypes) {
-        es.addEventListener(eventType, (e: MessageEvent) => {
+        es.addEventListener(eventType, (e: any) => {
+          if (!e || typeof e.data !== "string" || !e.data.trim()) {
+            return;
+          }
           try {
             const parsed = JSON.parse(e.data);
             this.emit(eventType, parsed.data || parsed);
-          } catch (err) {
-            console.error(
-              `[Crucible SSE] Failed to parse event '${eventType}':`,
-              err,
-            );
+          } catch {
+            // Ignore parse errors on network events or malformed payloads
           }
         });
       }
@@ -135,11 +140,12 @@ export class SessionStreamClient {
   }
 
   private connectWebSocket(): void {
-    if (typeof window === "undefined" && typeof WebSocket === "undefined") {
+    if (typeof window === "undefined" || typeof WebSocket === "undefined") {
       return;
     }
 
     this.disconnect();
+    this.manuallyClosed = false;
     const wsBase = this.baseUrl.replace(/^http/, "ws");
     const url = `${wsBase}/ws?sessionId=${this.sessionId}`;
 
@@ -157,19 +163,24 @@ export class SessionStreamClient {
       };
 
       ws.onmessage = (event) => {
+        if (!event || typeof event.data !== "string" || !event.data.trim()) {
+          return;
+        }
         try {
           const parsed = JSON.parse(event.data);
-          if (parsed.type && parsed.type in this.listeners) {
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            parsed.type &&
+            parsed.type in this.listeners
+          ) {
             this.emit(
               parsed.type as keyof StreamEventMap,
               parsed.data || parsed,
             );
           }
-        } catch (err) {
-          console.error(
-            "[Crucible WS] Failed to parse WebSocket message:",
-            err,
-          );
+        } catch {
+          // Ignore malformed ws payloads
         }
       };
 
@@ -284,13 +295,27 @@ export class SessionStreamClient {
     clearTimeout(this.reconnectTimer);
 
     if (this.eventSource) {
-      this.eventSource.close();
+      const es = this.eventSource;
       this.eventSource = null;
+      es.onerror = null;
+      es.onopen = null;
+      try {
+        es.close();
+      } catch {
+        // ignore
+      }
     }
 
     if (this.webSocket) {
-      this.webSocket.close();
+      const ws = this.webSocket;
       this.webSocket = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
     }
 
     this.setConnected(false);

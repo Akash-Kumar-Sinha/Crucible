@@ -1,8 +1,12 @@
 import { captureClientError } from "../lib/error-reporter";
+import { getOrchestratorUrl } from "../config/orchestrator-url";
+import type { TenantScope } from "../config/tenant-scope";
 
 export interface SessionSummary {
   id: string;
   title: string;
+  tenantId?: string;
+  namespace?: string;
   status: string;
   agentState: string;
   messageCount: number;
@@ -41,10 +45,14 @@ export interface AgentMessage {
 export interface SessionDetail {
   id: string;
   title: string;
+  tenantId?: string;
+  namespace?: string;
   status: string;
   createdAt: number;
   metadata: {
     title: string;
+    tenantId?: string;
+    namespace?: string;
     createdAt: number;
     turnCount: number;
     lastActiveAt: number;
@@ -55,6 +63,7 @@ export interface SessionDetail {
 
 export interface SendMessageResponse {
   sessionId: string;
+  title?: string;
   status: string;
   response: string;
   turns: number;
@@ -70,19 +79,7 @@ export class OrchestratorClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    if (baseUrl) {
-      this.baseUrl = baseUrl.replace(/\/$/, "");
-    } else if (
-      typeof process !== "undefined" &&
-      process.env.NEXT_PUBLIC_ORCHESTRATOR_URL
-    ) {
-      this.baseUrl = process.env.NEXT_PUBLIC_ORCHESTRATOR_URL.replace(
-        /\/$/,
-        "",
-      );
-    } else {
-      this.baseUrl = "http://localhost:4000";
-    }
+    this.baseUrl = (baseUrl || getOrchestratorUrl()).replace(/\/$/, "");
   }
 
   private async request<T>(
@@ -106,22 +103,26 @@ export class OrchestratorClient {
         headers,
         signal: controller.signal,
       });
-    } catch (networkErr: any) {
+    } catch (networkErr: unknown) {
       clearTimeout(timer);
+      const networkError =
+        networkErr instanceof Error
+          ? networkErr
+          : new Error(String(networkErr));
       const isTimeout =
-        networkErr.name === "AbortError" ||
-        networkErr.message?.includes("aborted");
+        networkError.name === "AbortError" ||
+        networkError.message.includes("aborted");
       const errorMsg = isTimeout
         ? `Request timed out after ${timeoutMs}ms while connecting to ${this.baseUrl}${path}.`
         : `Cannot connect to Crucible Core Server at ${this.baseUrl}. Please verify that 'make serve' is running.`;
 
-      captureClientError(networkErr, {
+      captureClientError(networkError, {
         action: "http_request",
         route: path,
         extra: { url, isTimeout, timeoutMs },
       });
 
-      throw new Error(errorMsg);
+      throw new Error(errorMsg, { cause: networkErr });
     } finally {
       clearTimeout(timer);
     }
@@ -152,20 +153,43 @@ export class OrchestratorClient {
   }
 
   async listSessions(): Promise<SessionSummary[]> {
+    return this.listSessionsWithScope();
+  }
+
+  async listSessionsWithScope(scope?: TenantScope): Promise<SessionSummary[]> {
+    const searchParams = new URLSearchParams();
+    if (scope?.tenantId) {
+      searchParams.set("tenantId", scope.tenantId);
+    }
+    if (scope?.namespace) {
+      searchParams.set("namespace", scope.namespace);
+    }
+
+    const query = searchParams.toString();
     const data = await this.request<{
       sessions: SessionSummary[];
       total: number;
-    }>("/sessions", { timeoutMs: 5_000 });
+    }>(query ? `/sessions?${query}` : "/sessions", { timeoutMs: 5_000 });
     return data.sessions || [];
   }
 
   async createSession(
     title?: string,
     systemPrompt?: string,
-  ): Promise<{ id: string; title: string; status: string; createdAt: number }> {
+    scope?: TenantScope,
+  ): Promise<{
+    id: string;
+    title: string;
+    tenantId?: string;
+    namespace?: string;
+    status: string;
+    createdAt: number;
+  }> {
     return this.request<{
       id: string;
       title: string;
+      tenantId?: string;
+      namespace?: string;
       status: string;
       createdAt: number;
     }>("/sessions", {
@@ -174,6 +198,8 @@ export class OrchestratorClient {
       body: JSON.stringify({
         title: title || "New Conversation",
         systemPrompt,
+        tenantId: scope?.tenantId,
+        namespace: scope?.namespace,
       }),
     });
   }

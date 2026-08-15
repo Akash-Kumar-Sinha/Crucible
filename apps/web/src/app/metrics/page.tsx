@@ -2,17 +2,13 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "motion/react";
 import {
   Activity,
   ArrowLeft,
-  CheckCircle2,
   Clock,
   Copy,
   Check,
   Layers,
-  Radio,
-  Server,
   Shield,
   Terminal,
   Zap,
@@ -32,8 +28,8 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProximityGlowCard } from "@/components/ui/proximity-glow";
-import { RadialSeparator } from "@/components/ui/radial-separator";
 import { cn } from "@/lib/utils";
+import { getOrchestratorUrl } from "@/config/orchestrator-url";
 
 interface SystemMetrics {
   timestamp: number;
@@ -77,10 +73,11 @@ export default function MetricsDashboardPage() {
 
     const fetchInitial = async () => {
       try {
+        const baseUrl = getOrchestratorUrl();
         const url =
           selectedSessionId !== "all"
-            ? `http://localhost:4000/api/metrics?sessionId=${selectedSessionId}`
-            : "http://localhost:4000/api/metrics";
+            ? `${baseUrl}/api/metrics?sessionId=${selectedSessionId}`
+            : `${baseUrl}/api/metrics`;
         const res = await fetch(url);
         if (res.ok) {
           const json = await res.json();
@@ -97,10 +94,11 @@ export default function MetricsDashboardPage() {
     fetchInitial();
 
     try {
+      const baseUrl = getOrchestratorUrl();
       const streamUrl =
         selectedSessionId !== "all"
-          ? `http://localhost:4000/api/metrics/stream?sessionId=${selectedSessionId}`
-          : "http://localhost:4000/api/metrics/stream";
+          ? `${baseUrl}/api/metrics/stream?sessionId=${selectedSessionId}`
+          : `${baseUrl}/api/metrics/stream`;
 
       eventSource = new EventSource(streamUrl);
 
@@ -186,7 +184,7 @@ export default function MetricsDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 ">
       {/* Sticky Premium Header */}
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/8 bg-zinc-950/80 px-6 sm:px-8 backdrop-blur-xl">
         <div className="flex items-center gap-6">
@@ -445,7 +443,7 @@ export default function MetricsDashboardPage() {
                     <th className="py-3 px-4 text-right">Inspect</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 font-sans">
+                <tbody className="divide-y divide-white/5 ">
                   {(activeMetrics?.spans ?? []).length === 0 ? (
                     <tr>
                       <td
@@ -471,7 +469,7 @@ export default function MetricsDashboardPage() {
 
                         return (
                           <React.Fragment key={span.id}>
-                            <tr className="hover:bg-white/[0.02] transition-colors group">
+                            <tr className="hover:bg-white/2 transition-colors group">
                               <td className="py-3 px-4 font-medium text-zinc-200">
                                 <div className="flex items-center gap-2">
                                   <span

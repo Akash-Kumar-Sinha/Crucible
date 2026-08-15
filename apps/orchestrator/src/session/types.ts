@@ -4,7 +4,7 @@ import type {
   ToolCall,
   ToolResult,
 } from "../schema/envelope";
-import type { AgentContext, AgentState } from "../agent/state-machine/types";
+import type { AgentState } from "../agent/state-machine/types";
 import type { ModelProvider } from "../provider/provider.interface";
 import type { ToolRegistry } from "../tools/registry";
 import type { AgentLoopResult } from "../agent/loop";
@@ -13,11 +13,18 @@ import type { GuardrailChain } from "../guardrails/chain";
 export type SessionId = string;
 
 export type SessionStatus =
-  "idle" | "running" | "awaiting_human" | "done" | "error";
+  | "idle"
+  | "queued"
+  | "running"
+  | "awaiting_human"
+  | "done"
+  | "error";
 
 export interface SessionConfig {
   sessionId?: SessionId;
   title?: string;
+  tenantId?: string;
+  namespace?: string;
   systemPrompt?: string;
   model?: string;
   temperature?: number;
@@ -34,6 +41,8 @@ export interface SessionConfig {
 export interface SessionMetadata {
   id: SessionId;
   title?: string;
+  tenantId?: string;
+  namespace?: string;
   createdAt: Date;
   updatedAt: Date;
   turnCount: number;
@@ -43,6 +52,8 @@ export interface SessionMetadata {
 export interface SessionSummary {
   id: SessionId;
   title?: string;
+  tenantId?: string;
+  namespace?: string;
   status: SessionStatus;
   agentState: AgentState;
   messageCount: number;
@@ -76,6 +87,7 @@ export interface SessionManagerConfig {
   defaultMaxSteps?: number;
   defaultModel?: string;
   maxConcurrentSessions?: number;
+  maxConcurrentExecutions?: number;
   sessionRepository?: any;
   runRepository?: any;
   redisStore?: any;

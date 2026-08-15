@@ -22,9 +22,30 @@ export class MockModelProvider implements ModelProvider {
     return this;
   }
 
+  private emitStream(response: ModelResponse, request: ModelRequest): void {
+    if (response.thought && request.onThought) {
+      const words = response.thought.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        const token = (i > 0 ? " " : "") + words[i];
+        request.onThought(token);
+      }
+    }
+    if (response.content && request.onToken) {
+      const words = response.content.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        const token = (i > 0 ? " " : "") + words[i];
+        request.onToken(token);
+      }
+    }
+  }
+
   async complete(request: ModelRequest): Promise<ModelResponse> {
+    let result: ModelResponse;
+
     if (this.queuedResponses.length > 0) {
-      return this.queuedResponses.shift()!;
+      result = this.queuedResponses.shift()!;
+      this.emitStream(result, request);
+      return result;
     }
 
     const messages = request.messages;
@@ -32,12 +53,14 @@ export class MockModelProvider implements ModelProvider {
 
     if (lastMessage?.role === "tool") {
       const toolOutput = lastMessage.content;
-      return {
+      result = {
         thought:
           "I have observed the tool output and am ready to formulate the final answer.",
         content: `Based on the tool execution result: ${toolOutput}`,
         finishReason: "stop",
       };
+      this.emitStream(result, request);
+      return result;
     }
 
     const userText = (lastMessage?.content || "").toLowerCase();
@@ -50,7 +73,7 @@ export class MockModelProvider implements ModelProvider {
       userText.includes("calculate") ||
       userText.includes("math")
     ) {
-      const match = userText.match(/(\d+\s*[\*\+\-\/]\s*\d+)/);
+      const match = userText.match(/(\d+\s*[-*+/]\s*\d+)/);
       const expression = match ? match[1].replace(/\s+/g, "") : "345 * 25";
       const toolCall: ToolCall = {
         id: `call_calc_${Date.now()}`,
@@ -58,11 +81,13 @@ export class MockModelProvider implements ModelProvider {
         arguments: { expression },
       };
 
-      return {
+      result = {
         thought: `The user is asking a mathematical calculation. I will use the calculator tool to evaluate '${expression}'.`,
         toolCalls: [toolCall],
         finishReason: "tool_calls",
       };
+      this.emitStream(result, request);
+      return result;
     }
 
     // Check if the user asks for time
@@ -77,19 +102,23 @@ export class MockModelProvider implements ModelProvider {
         arguments: {},
       };
 
-      return {
+      result = {
         thought:
           "The user requested the current time. I will invoke get_current_time.",
         toolCalls: [toolCall],
         finishReason: "tool_calls",
       };
+      this.emitStream(result, request);
+      return result;
     }
 
     // Default conversational response
-    return {
+    result = {
       thought: `Received user prompt: "${lastMessage?.content}". Formulating autonomous reasoning plan.`,
       content: `Hello! I am Crucible running in local mock mode. You asked: "${lastMessage?.content}". How can I help you further?`,
       finishReason: "stop",
     };
+    this.emitStream(result, request);
+    return result;
   }
 }

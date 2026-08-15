@@ -34,15 +34,50 @@ function printBanner() {
 }
 
 function attachSessionEventVisualizer(session: Session) {
+  let isThinking = false;
+  let isStreamingTokens = false;
+
   session.on("stateChange", (to, from) => {
+    if (isThinking) {
+      process.stdout.write("\x1b[0m\n");
+      isThinking = false;
+    }
+    if (isStreamingTokens) {
+      process.stdout.write("\n");
+      isStreamingTokens = false;
+    }
     console.log(`\x1b[36m[State]:\x1b[0m ${from} ──> \x1b[1m${to}\x1b[0m`);
   });
 
-  session.on("thought", (thought) => {
-    console.log(`\n\x1b[33m[Thought]:\x1b[0m\n${thought}`);
+  session.on("thought", (thoughtChunk) => {
+    if (!isThinking) {
+      isThinking = true;
+      process.stdout.write(`\n\x1b[33m[Thinking]:\x1b[0m\x1b[2;33m `);
+    }
+    process.stdout.write(thoughtChunk);
+  });
+
+  session.on("token", (tokenChunk) => {
+    if (isThinking) {
+      process.stdout.write("\x1b[0m\n");
+      isThinking = false;
+    }
+    if (!isStreamingTokens) {
+      isStreamingTokens = true;
+      process.stdout.write(`\n\x1b[1;37m[Response]:\x1b[0m `);
+    }
+    process.stdout.write(tokenChunk);
   });
 
   session.on("action", (actions) => {
+    if (isThinking) {
+      process.stdout.write("\x1b[0m\n");
+      isThinking = false;
+    }
+    if (isStreamingTokens) {
+      process.stdout.write("\n");
+      isStreamingTokens = false;
+    }
     for (const a of actions) {
       console.log(
         `\n\x1b[35m[Action -> Tool Call]:\x1b[0m \x1b[1m${a.name}\x1b[0m (id: ${a.id})`,
@@ -62,24 +97,25 @@ function attachSessionEventVisualizer(session: Session) {
     }
   });
 
-  session.on("done", (finalText) => {
-    console.log(
-      "\n═══════════════════════════════════════════════════════════════",
-    );
-    console.log(
-      "                        FINAL RESPONSE                         ",
-    );
-    console.log(
-      "═══════════════════════════════════════════════════════════════",
-    );
-    console.log(finalText);
-    console.log(
-      "═══════════════════════════════════════════════════════════════\n",
-    );
+  session.on("done", (_finalText) => {
+    if (isThinking) {
+      process.stdout.write("\x1b[0m\n");
+      isThinking = false;
+    }
+    if (isStreamingTokens) {
+      process.stdout.write("\n");
+      isStreamingTokens = false;
+    }
+    console.log("\n\x1b[32m✔ Turn completed successfully.\x1b[0m\n");
   });
 
   session.on("error", (err) => {
-    console.error(`\n\x1b[31m[Session Error]: ${err.message}\x1b[0m\n`);
+    if (isThinking || isStreamingTokens) {
+      process.stdout.write("\x1b[0m\n");
+      isThinking = false;
+      isStreamingTokens = false;
+    }
+    console.error(`\n\x1b[31m[Session Error]: ${err.message || err}\x1b[0m\n`);
   });
 }
 
@@ -101,7 +137,8 @@ async function runInteractiveRepl(session: Session, rl: readline.Interface) {
       trimmed === "exit" ||
       trimmed === "quit" ||
       trimmed === "/exit" ||
-      trimmed === "/quit"
+      trimmed === "/quit" ||
+      trimmed === "/q"
     ) {
       console.log("Exiting Crucible CLI. Goodbye!");
       break;
@@ -115,7 +152,7 @@ async function runInteractiveRepl(session: Session, rl: readline.Interface) {
       );
       console.log("  /status     - Show session metadata and status");
       console.log("  /clear      - Start a fresh session conversation");
-      console.log("  /exit, quit - Exit the interactive REPL\n");
+      console.log("  /exit, quit, q - Exit the interactive REPL\n");
       continue;
     }
 
@@ -187,15 +224,40 @@ async function main() {
         const lastMsg = request.messages[request.messages.length - 1];
 
         if (lastMsg.role === "tool") {
+          const thought = "Received tool output. Answering user.";
+          const content = `Tool executed successfully: ${lastMsg.content}`;
+
+          if (request.onThought) {
+            for (const word of thought.split(" ")) {
+              request.onThought(`${word} `);
+              await new Promise((r) => setTimeout(r, 25));
+            }
+          }
+
+          if (request.onToken) {
+            for (const word of content.split(" ")) {
+              request.onToken(`${word} `);
+              await new Promise((r) => setTimeout(r, 20));
+            }
+          }
+
           return {
-            thought: "Received tool output. Answering user.",
-            content: `Tool executed successfully: ${lastMsg.content}`,
+            thought,
+            content,
             finishReason: "stop",
           };
         }
 
+        const thought = "Inspecting environment via bash_exec.";
+        if (request.onThought) {
+          for (const word of thought.split(" ")) {
+            request.onThought(`${word} `);
+            await new Promise((r) => setTimeout(r, 25));
+          }
+        }
+
         return {
-          thought: "Inspecting environment via bash_exec.",
+          thought,
           toolCalls: [
             {
               id: `call_${Date.now()}`,

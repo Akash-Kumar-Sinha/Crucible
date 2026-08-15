@@ -3,17 +3,12 @@
 import * as React from "react";
 import {
   Shield,
-  Layers,
   Cpu,
-  Database,
   Network,
-  Lock,
-  CheckCircle2,
   AlertCircle,
   RefreshCw,
   HardDrive,
-  Activity,
-  Sliders,
+  Container,
 } from "lucide-react";
 import { orchestratorClient } from "../api/orchestrator-client";
 import { Button } from "@/components/ui/button";
@@ -72,13 +67,13 @@ export function SandboxInfoPanel({
         <DialogHeader>
           <div className="flex items-start justify-between gap-3 pr-8">
             <div className="flex items-start gap-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-white/5 text-primary">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-white/5 text-zinc-300">
                 <Shield size={18} />
               </div>
               <div>
                 <DialogTitle className="flex flex-wrap items-center gap-2">
                   Sandbox Isolation & Resource Budget
-                  <span className="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
                     TIER 1 HARDENED
                   </span>
                 </DialogTitle>
@@ -423,6 +418,135 @@ export function SandboxInfoPanel({
                 <span style={{ color: "#f4f4f5", fontFamily: "monospace" }}>
                   nftables inet crucible_netns_filter
                 </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Docker Container & Kubernetes Scheduling Status */}
+          <div
+            style={{
+              background: "#18181b",
+              border: "1px solid #27272a",
+              borderRadius: "8px",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#f4f4f5",
+                }}
+              >
+                <Container size={15} color="#388bfd" />
+                <span>Container & Workload Execution</span>
+              </div>
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "#388bfd",
+                  fontWeight: 500,
+                }}
+              >
+                {data?.container?.runtime || "Active Sandbox"}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  padding: "10px",
+                  background: "#121215",
+                  border: "1px solid #27272a",
+                  borderRadius: "6px",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#71717a" }}>
+                  Exit Code
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color:
+                      data?.container?.exitCode === 0
+                        ? "#4ade80"
+                        : data?.container?.exitCode !== undefined
+                          ? "#f87171"
+                          : "#f4f4f5",
+                    marginTop: "4px",
+                  }}
+                >
+                  {data?.container?.exitCode !== undefined
+                    ? `Exit ${data.container.exitCode}`
+                    : "Exit 0 (OK)"}
+                </div>
+              </div>
+              <div
+                style={{
+                  padding: "10px",
+                  background: "#121215",
+                  border: "1px solid #27272a",
+                  borderRadius: "6px",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#71717a" }}>
+                  Restarts
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "#f4f4f5",
+                    marginTop: "4px",
+                  }}
+                >
+                  {data?.container?.restarts ?? 0} restarts
+                </div>
+              </div>
+              <div
+                style={{
+                  padding: "10px",
+                  background: "#121215",
+                  border: "1px solid #27272a",
+                  borderRadius: "6px",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#71717a" }}>
+                  K8s Phase
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color:
+                      data?.scheduling?.phase === "Pending"
+                        ? "#fbbf24"
+                        : "#4ade80",
+                    marginTop: "4px",
+                  }}
+                >
+                  {data?.scheduling?.phase || "Running"}
+                </div>
               </div>
             </div>
           </div>

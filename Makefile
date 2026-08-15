@@ -68,6 +68,7 @@ check:
 	cargo check
 
 fmt:
+	bun run lint:fix
 	bunx prettier --write "apps/**/*.{ts,tsx,json}" "packages/**/*.{ts,tsx,json}" "*.json"
 	cargo fmt
 	cargo clippy
@@ -89,6 +90,18 @@ up--build:
 
 down:
 	docker compose down
+
+# -------------------------------------------------------------
+# Kubernetes (kind / minikube)
+# -------------------------------------------------------------
+k8s-cluster:
+	kind create cluster --config infra/k8s/overlays/dev/kind-cluster.yaml
+
+k8s-apply:
+	kubectl apply -k infra/k8s/overlays/dev
+
+k8s-delete:
+	kubectl delete -k infra/k8s/overlays/dev
 
 # -------------------------------------------------------------
 # Testing

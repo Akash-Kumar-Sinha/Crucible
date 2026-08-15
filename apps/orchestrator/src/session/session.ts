@@ -1,10 +1,5 @@
 import { EventEmitter } from "node:events";
-import {
-  type AgentMessage,
-  type StepRecord,
-  type ToolCall,
-  type ToolResult,
-} from "../schema/envelope";
+import { type AgentMessage, type StepRecord } from "../schema/envelope";
 import {
   type AgentContext,
   type AgentState,
@@ -19,11 +14,14 @@ import type {
   SessionStatus,
   SessionSummary,
 } from "./types";
+import { generateSessionTitle } from "./title-generator";
 import { tracer } from "../observability/otel";
 
 export class Session extends EventEmitter {
   readonly id: SessionId;
   title?: string;
+  readonly tenantId: string;
+  readonly namespace: string;
   readonly createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown>;
@@ -40,9 +38,24 @@ export class Session extends EventEmitter {
       config.sessionId ||
       `sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     this.title = config.title;
+    this.tenantId =
+      config.tenantId ||
+      (config.metadata?.tenantId as string) ||
+      process.env.CRUCIBLE_TENANT_ID ||
+      "default";
+    this.namespace =
+      config.namespace ||
+      (config.metadata?.namespace as string) ||
+      process.env.CRUCIBLE_NAMESPACE ||
+      "crucible";
     this.createdAt = new Date();
     this.updatedAt = new Date();
-    this.metadata = config.metadata ? { ...config.metadata } : {};
+    this.metadata = {
+      ...config.metadata,
+      tenantId: this.tenantId,
+      namespace: this.namespace,
+    };
+    let streamedThoughtInStep = false;
 
     this.loop = new AgentLoop({
       sessionId: this.id,
@@ -55,15 +68,24 @@ export class Session extends EventEmitter {
       temperature: config.temperature,
       onHumanApprovalRequired: config.onHumanApprovalRequired,
       onToken: (delta) => this.emit("token", delta),
-      onThought: (thought) => this.emit("thought", thought),
+      onThought: (thought) => {
+        streamedThoughtInStep = true;
+        this.emit("thought", thought);
+      },
       onToolStdout: (data) => this.emit("toolStdout", data),
       onToolStderr: (data) => this.emit("toolStderr", data),
     });
 
-    this.setupTransitionBridge();
+    this.setupTransitionBridge(() => {
+      const wasStreamed = streamedThoughtInStep;
+      streamedThoughtInStep = false;
+      return wasStreamed;
+    });
   }
 
-  private setupTransitionBridge(): void {
+  private setupTransitionBridge(
+    getAndResetStreamedThought?: () => boolean,
+  ): void {
     this.unsubscribeTransition = this.loop.onTransition(
       (from, to, event, ctx) => {
         this.updatedAt = new Date();
@@ -84,17 +106,28 @@ export class Session extends EventEmitter {
         }
 
         if (event.type === "MODEL_RESPONSE") {
-          if (event.response.thought) {
+          const wasStreamed = getAndResetStreamedThought
+            ? getAndResetStreamedThought()
+            : false;
+          if (!wasStreamed && event.response.thought) {
             this.emit("thought", event.response.thought);
           }
           if (event.response.toolCalls && event.response.toolCalls.length > 0) {
             this.emit("action", event.response.toolCalls);
+          }
+          const latestMsg = ctx.messages[ctx.messages.length - 1];
+          if (latestMsg && latestMsg.role === "assistant") {
+            this.emit("message", latestMsg);
           }
         } else if (event.type === "TOOL_RESULTS") {
           this.emit("observation", event.results);
           const latestStep = ctx.history[ctx.history.length - 1];
           if (latestStep) {
             this.emit("step", latestStep);
+          }
+          const latestMsg = ctx.messages[ctx.messages.length - 1];
+          if (latestMsg && latestMsg.role === "tool") {
+            this.emit("message", latestMsg);
           }
         }
       },
@@ -113,6 +146,10 @@ export class Session extends EventEmitter {
     return this.status;
   }
 
+  queue(): void {
+    this.setStatus("queued");
+  }
+
   getState(): AgentState {
     return this.loop.getState();
   }
@@ -129,10 +166,20 @@ export class Session extends EventEmitter {
     return [...this.loop.getContext().history];
   }
 
+  getTenantId(): string {
+    return this.tenantId;
+  }
+
+  getNamespace(): string {
+    return this.namespace;
+  }
+
   getMetadata(): SessionMetadata {
     return {
       id: this.id,
       title: this.title,
+      tenantId: this.tenantId,
+      namespace: this.namespace,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
       turnCount: this.turnCount,
@@ -145,6 +192,8 @@ export class Session extends EventEmitter {
     return {
       id: this.id,
       title: this.title,
+      tenantId: this.tenantId,
+      namespace: this.namespace,
       status: this.status,
       agentState: this.loop.getState(),
       messageCount: ctx.messages.length,
@@ -171,6 +220,16 @@ export class Session extends EventEmitter {
     this.updatedAt = new Date();
     this.setStatus("running");
 
+    if (
+      !this.title ||
+      this.title === "New Conversation" ||
+      this.title === this.id
+    ) {
+      this.title = generateSessionTitle(text);
+      this.metadata.title = this.title;
+      this.emit("titleChange", this.title);
+    }
+
     const userMessage: AgentMessage = { role: "user", content: text };
     this.emit("message", userMessage);
 
@@ -186,15 +245,14 @@ export class Session extends EventEmitter {
         try {
           const result = await this.loop.run(text);
 
+          this.metadata.messages = this.getMessages();
+          this.metadata.title = this.title;
+          this.updatedAt = new Date();
+
           if (result.state === "done") {
             this.setStatus("done");
             span.setAttribute("finalState", "done");
             if (result.finalResponse) {
-              const assistantMessage: AgentMessage = {
-                role: "assistant",
-                content: result.finalResponse,
-              };
-              this.emit("message", assistantMessage);
               this.emit("done", result.finalResponse, result);
             }
             this.emit("turnCompleted", {
@@ -213,6 +271,7 @@ export class Session extends EventEmitter {
               content: `⚠️ **Execution Error**: ${errorMsg}`,
             };
             this.loop.getContext().messages.push(assistantErrorMessage);
+            this.metadata.messages = this.getMessages();
             this.emit("message", assistantErrorMessage);
             this.emit("error", {
               message: errorMsg,
@@ -237,6 +296,7 @@ export class Session extends EventEmitter {
             content: `⚠️ **Execution Error**: ${errorMsg}`,
           };
           this.loop.getContext().messages.push(assistantErrorMessage);
+          this.metadata.messages = this.getMessages();
           this.emit("message", assistantErrorMessage);
           const errorObj = { message: errorMsg, details: err };
           this.emit("error", errorObj);
@@ -267,6 +327,7 @@ export class Session extends EventEmitter {
     }
     if (data.messages && data.messages.length > 0) {
       this.loop.restoreMessages(data.messages);
+      this.metadata.messages = [...data.messages];
     }
   }
 
@@ -280,11 +341,6 @@ export class Session extends EventEmitter {
     if (result.state === "done") {
       this.setStatus("done");
       if (result.finalResponse) {
-        const assistantMessage: AgentMessage = {
-          role: "assistant",
-          content: result.finalResponse,
-        };
-        this.emit("message", assistantMessage);
         this.emit("done", result.finalResponse, result);
       }
       this.emit("turnCompleted", {

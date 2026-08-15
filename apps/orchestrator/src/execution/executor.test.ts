@@ -5,6 +5,7 @@ import {
   DockerImageFactory,
   DockerContainerConfigBuilder,
   GrpcExecutor,
+  KubernetesJobExecutor,
 } from "./";
 import { createBashTool } from "../tools/builtin/bash";
 import { getErrorReporter } from "../observability/error-reporter";
@@ -232,6 +233,43 @@ describe("GrpcExecutor (Rust gRPC IPC & Telemetry)", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("grpc fallback success");
     fallbackGrpc.close();
+  });
+});
+
+describe("KubernetesJobExecutor (Job Pattern & Sidecar Pattern)", () => {
+  it("should have correct executor identity", () => {
+    const k8sExec = new KubernetesJobExecutor();
+    expect(k8sExec.name).toBe("k8s_job");
+  });
+
+  it("should report availability false when Kubernetes cluster API is unreachable", async () => {
+    const unreachableK8s = new KubernetesJobExecutor({
+      apiUrl: "http://127.0.0.1:59996",
+      customFetch: async () => {
+        throw new Error("Cluster offline");
+      },
+    });
+
+    const available = await unreachableK8s.isAvailable();
+    expect(available).toBe(false);
+  });
+
+  it("should fallback to secondary executor when Kubernetes cluster API is unavailable", async () => {
+    const local = new LocalExecutor();
+    const fallbackK8s = new KubernetesJobExecutor({
+      apiUrl: "http://127.0.0.1:59996",
+      fallbackExecutor: local,
+      customFetch: async () => {
+        throw new Error("Cluster offline");
+      },
+    });
+
+    const result = await fallbackK8s.execute({
+      command: "echo 'k8s fallback success'",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("k8s fallback success");
   });
 });
 

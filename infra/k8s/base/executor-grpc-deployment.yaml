@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: crucible-executor-grpc
+  namespace: crucible
+  labels:
+    app.kubernetes.io/name: crucible-executor-grpc
+    app.kubernetes.io/part-of: crucible
+spec:
+  ports:
+    - port: 50051
+      name: grpc
+      targetPort: 50051
+  selector:
+    app.kubernetes.io/name: crucible-executor-grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crucible-executor-grpc
+  namespace: crucible
+  labels:
+    app.kubernetes.io/name: crucible-executor-grpc
+    app.kubernetes.io/part-of: crucible
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: crucible-executor-grpc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: crucible-executor-grpc
+        app.kubernetes.io/part-of: crucible
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: executor-grpc
+          image: crucible-executor-grpc:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 50051
+              name: grpc
+          env:
+            - name: CRUCIBLE_GRPC_PORT
+              value: "50051"
+            - name: RUST_LOG
+              value: "info"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          livenessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          startupProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 10

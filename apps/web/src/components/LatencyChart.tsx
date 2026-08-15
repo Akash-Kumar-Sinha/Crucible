@@ -29,7 +29,7 @@ export interface LatencyChartProps {
 
 export function LatencyChart({
   meanLatencyMs,
-  p50LatencyMs,
+  p50LatencyMs: _p50LatencyMs,
   p95LatencyMs,
   p99LatencyMs,
   spans = [],

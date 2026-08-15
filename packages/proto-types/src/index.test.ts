@@ -16,11 +16,17 @@ describe("@crucible/proto-types", () => {
   });
 
   it("should load the protobuf definition without errors", () => {
-    const protoDefinition = loadExecutorProtoDefinition();
+    const protoDefinition = loadExecutorProtoDefinition() as Record<
+      string,
+      unknown
+    >;
+    const crucible = protoDefinition.crucible as
+      Record<string, unknown> | undefined;
+    const executor = crucible?.executor as Record<string, unknown> | undefined;
+    const v1 = executor?.v1 as Record<string, unknown> | undefined;
+
     expect(protoDefinition).toBeDefined();
-    expect(
-      (protoDefinition as any).crucible?.executor?.v1?.ExecutorService,
-    ).toBeDefined();
+    expect(v1?.ExecutorService).toBeDefined();
   });
 
   it("should instantiate an ExecutorServiceClient", () => {

@@ -1,5 +1,4 @@
 import * as React from "react";
-import { motion } from "motion/react";
 import { Shield, Layers, Activity, Cpu } from "lucide-react";
 import { ProximityGlowCard } from "@/components/ui/proximity-glow";
 import { cn } from "@/lib/utils";

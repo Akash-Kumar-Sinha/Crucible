@@ -11,6 +11,8 @@ export interface ModelRequest {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  onToken?: (token: string) => void;
+  onThought?: (thought: string) => void;
 }
 
 /**

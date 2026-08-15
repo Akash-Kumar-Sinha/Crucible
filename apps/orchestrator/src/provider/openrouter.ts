@@ -5,7 +5,11 @@ import type {
   ModelRequest,
   ModelResponse,
 } from "./provider.interface";
-import { cleanThoughtTags, extractThought } from "./thought-parser";
+import {
+  cleanThoughtTags,
+  extractThought,
+  StreamingThoughtExtractor,
+} from "./thought-parser";
 
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -78,6 +82,10 @@ export class OpenRouterProvider implements ModelProvider {
     }
 
     const payload = this.buildPayload(request);
+    const shouldStream = Boolean(request.onToken || request.onThought);
+    if (shouldStream) {
+      payload.stream = true;
+    }
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
@@ -112,6 +120,10 @@ export class OpenRouterProvider implements ModelProvider {
       throw new Error(userFriendlyMessage);
     }
 
+    if (shouldStream && response.body) {
+      return this.handleSseStream(response.body, request);
+    }
+
     const data = (await response.json()) as any;
     if (data.error) {
       const msg = data.error.message || JSON.stringify(data.error);
@@ -126,6 +138,144 @@ export class OpenRouterProvider implements ModelProvider {
     }
 
     return this.parseChoice(choice, data);
+  }
+
+  private async handleSseStream(
+    body: ReadableStream<Uint8Array>,
+    request: ModelRequest,
+  ): Promise<ModelResponse> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    let rawContent = "";
+    let streamedThought = "";
+    let finishReason: string | undefined;
+    let usage: any = undefined;
+    const toolCallsMap = new Map<
+      number,
+      { id: string; name: string; arguments: string }
+    >();
+
+    const thoughtExtractor = new StreamingThoughtExtractor({
+      onToken: (chunk) => {
+        request.onToken?.(chunk);
+      },
+      onThought: (chunk) => {
+        streamedThought += chunk;
+        request.onThought?.(chunk);
+      },
+    });
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (
+          !trimmed ||
+          trimmed.startsWith(":") ||
+          !trimmed.startsWith("data:")
+        ) {
+          continue;
+        }
+
+        const dataStr = trimmed.replace(/^data:\s*/, "");
+        if (dataStr === "[DONE]") {
+          break;
+        }
+
+        try {
+          const json = JSON.parse(dataStr);
+          if (json.usage) usage = json.usage;
+
+          const choice = json.choices?.[0];
+          if (!choice) continue;
+
+          if (choice.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
+
+          const delta = choice.delta || {};
+
+          const reasoningChunk =
+            delta.reasoning || delta.reasoning_content || delta.thinking || "";
+          if (reasoningChunk) {
+            streamedThought += reasoningChunk;
+            request.onThought?.(reasoningChunk);
+          }
+
+          if (delta.content) {
+            rawContent += delta.content;
+            thoughtExtractor.feed(delta.content);
+          }
+
+          if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              if (!toolCallsMap.has(idx)) {
+                toolCallsMap.set(idx, {
+                  id: tc.id || "",
+                  name: tc.function?.name || "",
+                  arguments: tc.function?.arguments || "",
+                });
+              } else {
+                const current = toolCallsMap.get(idx)!;
+                if (tc.id) current.id += tc.id;
+                if (tc.function?.name) current.name += tc.function.name;
+                if (tc.function?.arguments)
+                  current.arguments += tc.function.arguments;
+              }
+            }
+          }
+        } catch {
+          // ignore malformed SSE line
+        }
+      }
+    }
+
+    thoughtExtractor.flush();
+
+    const toolCalls: ToolCall[] = [];
+    for (const item of toolCallsMap.values()) {
+      let args: Record<string, unknown>;
+      try {
+        args = item.arguments ? JSON.parse(item.arguments) : {};
+      } catch {
+        args = { raw: item.arguments };
+      }
+      toolCalls.push({
+        id:
+          item.id ||
+          `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: item.name,
+        arguments: args,
+      });
+    }
+
+    const finalThought =
+      streamedThought.trim() || extractThought(rawContent) || undefined;
+    const finalContent = cleanThoughtTags(rawContent) || undefined;
+
+    return {
+      thought: finalThought,
+      content: finalContent,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      finishReason: this.mapFinishReason(finishReason, toolCalls.length > 0),
+      usage: usage
+        ? {
+            promptTokens: usage.prompt_tokens,
+            completionTokens: usage.completion_tokens,
+            totalTokens: usage.total_tokens,
+          }
+        : undefined,
+      raw: { streamed: true, rawContent },
+    };
   }
 
   private buildPayload(request: ModelRequest): Record<string, unknown> {
@@ -163,7 +313,8 @@ export class OpenRouterProvider implements ModelProvider {
     const message = choice.message || {};
     const rawContent: string = message.content || "";
 
-    const reasoningField = message.reasoning || message.thinking || "";
+    const reasoningField =
+      message.reasoning || message.reasoning_content || message.thinking || "";
     const parsedThought = reasoningField || extractThought(rawContent);
     const cleanedContent = cleanThoughtTags(rawContent);
 
@@ -193,7 +344,8 @@ export class OpenRouterProvider implements ModelProvider {
     if (!Array.isArray(rawToolCalls)) return [];
 
     return rawToolCalls.map((tc) => {
-      let args: Record<string, unknown> = {};
+      let args: Record<string, unknown>;
+
       try {
         args =
           typeof tc.function?.arguments === "string"

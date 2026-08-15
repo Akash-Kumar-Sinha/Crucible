@@ -4,7 +4,6 @@ import {
   RunRepository,
   RedisSessionStore,
   checkPostgresHealth,
-  getPrismaClient,
   closePostgres,
 } from "./index";
 import { runPostgresMigrations } from "./postgres/migrator";
@@ -39,7 +38,9 @@ describe("State & Session Persistence Subsystem (Postgres & Redis)", () => {
     if (isDbAvailable) {
       try {
         await sessionRepo.deleteSession(testSessionId);
-      } catch {}
+      } catch (err) {
+        console.warn("Failed to clean up persistence test session", err);
+      }
     }
     await redisStore.close();
     await closePostgres();
@@ -196,7 +197,7 @@ describe("State & Session Persistence Subsystem (Postgres & Redis)", () => {
       autoPersist: true,
     });
 
-    const s1 = await manager1.createSessionAsync({
+    const _s1 = await manager1.createSessionAsync({
       sessionId: restartSessionId,
       title: "Cross Restart Session",
     });

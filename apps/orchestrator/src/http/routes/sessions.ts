@@ -39,17 +39,26 @@ export class SessionRouteHandler {
     return this.jsonResponse(errorBody, status);
   }
 
-  async listSessions(): Promise<Response> {
+  async listSessions(req?: Request): Promise<Response> {
     const t0 = performance.now();
     try {
-      const sessions = this.sessionManager.list();
+      let filter: { tenantId?: string; namespace?: string } | undefined;
+      if (req) {
+        const url = new URL(req.url);
+        const tenantId = url.searchParams.get("tenantId") || undefined;
+        const namespace = url.searchParams.get("namespace") || undefined;
+        if (tenantId || namespace) {
+          filter = { tenantId, namespace };
+        }
+      }
+      const sessions = this.sessionManager.list(filter);
       const response: SessionListResponse = {
         sessions,
         total: sessions.length,
       };
       const durationMs = Math.round(performance.now() - t0);
       logger.debug(
-        { total: sessions.length, durationMs },
+        { total: sessions.length, durationMs, filter },
         "Listed active sessions",
       );
       return this.jsonResponse(response, 200);
@@ -85,6 +94,8 @@ export class SessionRouteHandler {
     try {
       const session = this.sessionManager.createSession({
         title: body.title || "New Conversation",
+        tenantId: body.tenantId,
+        namespace: body.namespace,
         systemPrompt: body.systemPrompt,
         metadata: body.metadata,
       });
@@ -93,6 +104,8 @@ export class SessionRouteHandler {
       const response: CreateSessionResponse = {
         id: session.id,
         title: meta.title || session.id,
+        tenantId: meta.tenantId,
+        namespace: meta.namespace,
         status: session.getStatus(),
         createdAt:
           meta.createdAt instanceof Date
@@ -102,7 +115,13 @@ export class SessionRouteHandler {
 
       const durationMs = Math.round(performance.now() - t0);
       logger.info(
-        { sessionId: session.id, title: response.title, durationMs },
+        {
+          sessionId: session.id,
+          title: response.title,
+          tenantId: response.tenantId,
+          namespace: response.namespace,
+          durationMs,
+        },
         "Created new session successfully",
       );
 
@@ -115,6 +134,7 @@ export class SessionRouteHandler {
       );
       getErrorReporter().captureAgentError(err, {
         state: "session_creation_failed",
+        tenantId: body.tenantId,
         extra: { body },
       });
 
@@ -153,10 +173,14 @@ export class SessionRouteHandler {
     const response: SessionDetailResponse = {
       id: session.id,
       title: metadata.title || session.id,
+      tenantId: metadata.tenantId,
+      namespace: metadata.namespace,
       status: session.getStatus(),
       createdAt: createdAtMs,
       metadata: {
         title: metadata.title || session.id,
+        tenantId: metadata.tenantId,
+        namespace: metadata.namespace,
         createdAt: createdAtMs,
         turnCount: metadata.turnCount,
         updatedAt: updatedAtMs,
@@ -218,6 +242,7 @@ export class SessionRouteHandler {
 
       const response: SendMessageResponse = {
         sessionId: session.id,
+        title: session.title || session.id,
         status: session.getStatus(),
         response: result.finalResponse || "",
         turns: session.getMetadata().turnCount,
@@ -244,6 +269,8 @@ export class SessionRouteHandler {
       getErrorReporter().captureAgentError(err, {
         sessionId,
         state: "message_processing_failed",
+        tenantId: session.getTenantId(),
+        namespace: session.getNamespace(),
       });
 
       return this.errorResponse(
@@ -276,7 +303,7 @@ export class SessionRouteHandler {
       reason?: string;
       toolCallId?: string;
       resume?: boolean;
-    } = {};
+    };
 
     try {
       body = await req.json();
@@ -318,6 +345,12 @@ export class SessionRouteHandler {
         200,
       );
     } catch (err: any) {
+      getErrorReporter().captureAgentError(err, {
+        sessionId,
+        state: "approval_failed",
+        tenantId: session.getTenantId(),
+        namespace: session.getNamespace(),
+      });
       return this.errorResponse(
         "APPROVAL_FAILED",
         err.message || "Failed to process human approval decision",

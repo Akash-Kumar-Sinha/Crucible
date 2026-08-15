@@ -13,7 +13,7 @@ class MockProvider implements ModelProvider {
   readonly name = "mock";
   readonly defaultModel = "mock-model";
 
-  async complete(request: ModelRequest): Promise<ModelResponse> {
+  async complete(_request: ModelRequest): Promise<ModelResponse> {
     return {
       content: "Stream test answer",
       finishReason: "stop",
@@ -71,6 +71,14 @@ describe("Real-Time Streaming Subsystem (Observer & Pub-Sub Pattern)", () => {
     const toolText = new TextDecoder().decode(toolChunk);
     expect(toolText).toContain("event: tool_stdout");
     expect(toolText).toContain("building package...");
+
+    // Emit application error event
+    session.emit("error", new Error("Rate limit exceeded"));
+
+    const { value: errorChunk } = await reader!.read();
+    const errorText = new TextDecoder().decode(errorChunk);
+    expect(errorText).toContain("event: error");
+    expect(errorText).toContain("Rate limit exceeded");
 
     reader?.cancel();
   });

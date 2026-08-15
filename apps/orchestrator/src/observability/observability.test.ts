@@ -1,21 +1,12 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import {
-  ErrorReporter,
-  initErrorReporter,
-  captureAgentError,
-} from "./error-reporter";
+import { ErrorReporter } from "./error-reporter";
 import {
   logger,
   createSessionLogger,
   createTurnLogger,
   createToolLogger,
 } from "./logger";
-import {
-  performLivenessCheck,
-  performReadinessCheck,
-  handleHealthzRequest,
-  handleReadyzRequest,
-} from "./health";
+import { performLivenessCheck, performReadinessCheck } from "./health";
 import { SessionManager } from "../session/session-manager";
 import { Session } from "../session/session";
 import { LocalExecutor } from "../execution/local-executor";
@@ -199,6 +190,63 @@ describe("Observability & Centralized Error Reporter", () => {
     expect(alertTriggered).toBeTrue();
     expect(alertReason).toContain("threshold crossed");
   });
+
+  it("should capture container-level failure events with container context", () => {
+    const errId = reporter.captureContainerFailure({
+      containerId: "cnt_abc_123",
+      image: "node:20-alpine",
+      exitCode: 137,
+      oomKilled: true,
+      memoryLimitBytes: 512 * 1024 * 1024,
+      reason: "CONTAINER_OOM_KILLED",
+      sessionId: "sess_cont_1",
+      toolName: "bash_exec",
+    });
+
+    expect(errId).toBeString();
+    expect(errId.startsWith("cnt_err_")).toBeTrue();
+
+    const metrics = reporter.getMetrics();
+    expect(metrics.totalErrors).toBe(1);
+    expect(metrics.containerFailuresCount).toBe(1);
+
+    const record = metrics.recentErrors[0];
+    expect(record.level).toBe("fatal");
+    expect(record.containerContext).toBeDefined();
+    expect(record.containerContext?.containerId).toBe("cnt_abc_123");
+    expect(record.containerContext?.exitCode).toBe(137);
+    expect(record.containerContext?.oomKilled).toBeTrue();
+  });
+
+  it("should capture infrastructure-level failures (Pod OOMKilled/Evicted) distinct from tool errors", () => {
+    const errId = reporter.captureInfraFailure({
+      podName: "crucible-job-sess1-abc123",
+      jobName: "crucible-job-sess1",
+      namespace: "crucible",
+      image: "crucible-sandbox:latest",
+      exitCode: 137,
+      oomKilled: true,
+      reason: "INFRA_POD_OOM_KILLED",
+      sessionId: "sess_k8s_1",
+      toolName: "bash_exec",
+    });
+
+    expect(errId).toBeString();
+    expect(errId.startsWith("inf_err_")).toBeTrue();
+
+    const metrics = reporter.getMetrics();
+    expect(metrics.totalErrors).toBe(1);
+    expect(metrics.infraFailuresCount).toBe(1);
+
+    const record = metrics.recentErrors[0];
+    expect(record.level).toBe("fatal");
+    expect(record.infraContext).toBeDefined();
+    expect(record.infraContext?.podName).toBe("crucible-job-sess1-abc123");
+    expect(record.infraContext?.reason).toBe("INFRA_POD_OOM_KILLED");
+    expect(record.message).toContain(
+      "Infrastructure failure (INFRA_POD_OOM_KILLED)",
+    );
+  });
 });
 
 describe("Health Check API Pattern", () => {
@@ -234,6 +282,23 @@ describe("Health Check API Pattern", () => {
     expect(result.body.checks?.["docker_daemon"]).toBeDefined();
     expect(result.body.checks?.["rust_grpc_executor"]).toBeDefined();
     expect(result.body.checks?.["disk_workspace"].status).toBe("ok");
+  });
+
+  it("should probe kubernetes cluster API when configured", async () => {
+    const result = await performReadinessCheck({
+      checkKubernetes: async () => true,
+      checkOpenRouter: async () => true,
+      checkExecutor: async () => true,
+      checkDisk: async () => true,
+      checkPostgres: async () => ({ ok: true, latencyMs: 1 }),
+      checkRedis: async () => ({ ok: true, latencyMs: 1 }),
+    });
+
+    expect(result.body.checks?.["kubernetes_cluster"]).toBeDefined();
+    expect(result.body.checks?.["kubernetes_cluster"].status).toBe("ok");
+    expect(result.body.checks?.["kubernetes_cluster"].message).toBe(
+      "Kubernetes API cluster reachable",
+    );
   });
 
   it("should report 503 degraded status when downstream dependency fails", async () => {

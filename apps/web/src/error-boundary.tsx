@@ -117,7 +117,7 @@ export class ErrorBoundary extends Component<
     }
 
     return (
-      <div className="flex min-h-[400px] w-full flex-col items-center justify-center p-6 text-foreground">
+      <div className="flex min-h-100 w-full flex-col items-center justify-center p-6 text-foreground">
         <Card className="w-full max-w-xl border border-white/8 shadow-xl">
           <CardHeader>
             <div className="col-span-1 flex min-w-0 items-start gap-4">

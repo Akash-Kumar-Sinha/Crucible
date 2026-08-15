@@ -1,8 +1,4 @@
 import type { z } from "zod";
-import type {
-  ToolCallEnvelopeV1,
-  ToolResultEnvelopeV1,
-} from "@crucible/shared-schemas";
 
 /**
  * Standard JSON Schema 7/Draft-2020 specification subset used by LLM providers and MCP

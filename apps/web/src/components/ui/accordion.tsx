@@ -16,12 +16,12 @@ import { AnimatePresence, motion } from "motion/react";
 
 import { cn } from "@/lib/utils";
 
-const sourceSerif = Source_Serif_4({
+const _sourceSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: "variable",
 });
 
-const roundnessClass = "rounded-lg";
+const roundnessClass = "rounded-md";
 
 interface AccordionContextValue {
   openValue: string | null;
@@ -62,9 +62,11 @@ const useAccordionItem = () => {
 interface AccordionProps {
   children: React.ReactNode;
   className?: string;
-  defaultValue?: string;
+  defaultValue?: string | null;
   value?: string | null;
   onValueChange?: (value: string | null) => void;
+  type?: "single" | "multiple";
+  collapsible?: boolean;
 }
 
 const Accordion = ({
@@ -101,12 +103,7 @@ const Accordion = ({
     <AccordionContext.Provider value={{ openValue, toggle }}>
       <div
         data-accordion-root
-        className={cn(
-          "flex flex-col gap-2 p-2",
-          sourceSerif.className,
-          roundnessClass,
-          className,
-        )}
+        className={cn("flex flex-col gap-2", roundnessClass, className)}
       >
         {children}
       </div>
@@ -137,7 +134,7 @@ const AccordionItem = ({ value, children, className }: AccordionItemProps) => {
       <div
         data-state={open ? "open" : "closed"}
         className={cn(
-          "overflow-hidden  bg-black transition-shadow duration-200",
+          "overflow-hidden bg-black transition-shadow duration-200",
           open && "shadow-lg",
           roundnessClass,
           className,
@@ -152,9 +149,16 @@ const AccordionItem = ({ value, children, className }: AccordionItemProps) => {
 interface AccordionTriggerProps {
   children: React.ReactNode;
   className?: string;
+  chevronClassName?: string;
+  hideChevron?: boolean;
 }
 
-const AccordionTrigger = ({ children, className }: AccordionTriggerProps) => {
+const AccordionTrigger = ({
+  children,
+  className,
+  chevronClassName,
+  hideChevron = false,
+}: AccordionTriggerProps) => {
   const { toggle } = useAccordion();
   const { value, open, triggerId, contentId } = useAccordionItem();
 
@@ -193,17 +197,18 @@ const AccordionTrigger = ({ children, className }: AccordionTriggerProps) => {
         className,
       )}
     >
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">
-        {children}
-      </span>
-      <ChevronDown
-        className={cn(
-          "h-4 w-4 shrink-0 text-white/40 transition-transform duration-200",
-          "group-hover:text-white/60",
-          open && "rotate-180",
-        )}
-        aria-hidden
-      />
+      <div className="min-w-0 flex-1">{children}</div>
+      {!hideChevron && (
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-white/40 transition-transform duration-200",
+            "group-hover:text-white/60",
+            open && "rotate-180",
+            chevronClassName,
+          )}
+          aria-hidden
+        />
+      )}
     </button>
   );
 };
@@ -237,7 +242,7 @@ const AccordionContent = ({ children, className }: AccordionContentProps) => {
         >
           <div
             className={cn(
-              "px-5 py-4 text-left text-sm leading-relaxed text-white/40",
+              "px-5 py-4 text-left text-sm leading-relaxed text-white/70",
               className,
             )}
           >

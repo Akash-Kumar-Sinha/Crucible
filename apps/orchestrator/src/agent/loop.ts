@@ -190,6 +190,8 @@ export class AgentLoop {
           model: this.options.model,
           temperature: this.options.temperature,
           guardrails: this.guardrails,
+          onToken: this.options.onToken,
+          onThought: this.options.onThought,
         });
         return this.stateMachine.getState();
 

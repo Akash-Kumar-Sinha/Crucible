@@ -9,7 +9,6 @@ import {
   Server,
   Database,
   Layers,
-  Sparkles,
   ExternalLink,
   Eye,
   EyeOff,
@@ -17,6 +16,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo, CrucibleWordmark } from "@/components/Logo";
+import {
+  getDefaultTenantScope,
+  readTenantScope,
+  writeTenantScope,
+} from "../config/tenant-scope";
 import {
   Dialog,
   DialogContent,
@@ -26,11 +30,17 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
+import { getOrchestratorUrl } from "@/config/orchestrator-url";
 
 export interface SetupWizardProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfigSaved?: (config: { apiKey: string; model: string }) => void;
+  onConfigSaved?: (config: {
+    apiKey: string;
+    model: string;
+    tenantId: string;
+    namespace: string;
+  }) => void;
   isFirstRun?: boolean;
 }
 
@@ -78,6 +88,12 @@ export function SetupWizard({
   const [apiKey, setApiKey] = React.useState("");
   const [selectedModel, setSelectedModel] = React.useState("openrouter/free");
   const [customModel, setCustomModel] = React.useState("");
+  const [tenantId, setTenantId] = React.useState(
+    getDefaultTenantScope().tenantId,
+  );
+  const [namespace, setNamespace] = React.useState(
+    getDefaultTenantScope().namespace,
+  );
   const [showKey, setShowKey] = React.useState(false);
   const [isValidating, setIsValidating] = React.useState(false);
   const [validationStatus, setValidationStatus] = React.useState<
@@ -99,7 +115,10 @@ export function SetupWizard({
       const savedKey = localStorage.getItem("crucible_api_key") || "";
       const savedModel =
         localStorage.getItem("crucible_model") || "openrouter/free";
+      const savedScope = readTenantScope();
       if (savedKey) setApiKey(savedKey);
+      setTenantId(savedScope.tenantId);
+      setNamespace(savedScope.namespace);
       if (savedModel) {
         if (POPULAR_MODELS.some((m) => m.id === savedModel)) {
           setSelectedModel(savedModel);
@@ -137,8 +156,7 @@ export function SetupWizard({
     }
 
     try {
-      const orchestratorUrl =
-        process.env.NEXT_PUBLIC_ORCHESTRATOR_URL || "http://localhost:4000";
+      const orchestratorUrl = getOrchestratorUrl();
       const readyzRes = await fetch(`${orchestratorUrl}/readyz`).catch(
         () => null,
       );
@@ -246,10 +264,16 @@ export function SetupWizard({
         localStorage.setItem("crucible_api_key", finalKey);
       }
       localStorage.setItem("crucible_model", finalModel);
+      writeTenantScope({ tenantId, namespace });
     }
 
     if (onConfigSaved) {
-      onConfigSaved({ apiKey: finalKey, model: finalModel });
+      onConfigSaved({
+        apiKey: finalKey,
+        model: finalModel,
+        tenantId,
+        namespace,
+      });
     }
 
     onClose();
@@ -268,7 +292,7 @@ export function SetupWizard({
       <DialogContent className="max-w-[640px]" showCloseButton={!isFirstRun}>
         <DialogHeader>
           <div className="flex items-center gap-3 pr-6">
-            <Logo className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
+            <Logo className="w-7 h-7 sm:w-8 sm:h-8 text-white shrink-0" />
             <div>
               <DialogTitle className="flex items-center gap-2">
                 <span>{isFirstRun ? "Welcome to" : "Configure"}</span>
@@ -402,6 +426,70 @@ export function SetupWizard({
                 <span>{validationMessage}</span>
               </div>
             )}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <label
+              style={{
+                fontSize: "13px",
+                fontWeight: 500,
+                color: "#f4f4f5",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span
+                style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                <ShieldCheck size={14} color="#a1a1aa" />
+                Active Tenant Scope
+              </span>
+              <span style={{ fontSize: "11px", color: "#a1a1aa" }}>
+                Namespace-per-tenant
+              </span>
+            </label>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "8px",
+              }}
+            >
+              <input
+                type="text"
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                placeholder="tenant-default"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  background: "#18181b",
+                  border: "1px solid #27272a",
+                  borderRadius: "6px",
+                  color: "#f4f4f5",
+                  fontSize: "13px",
+                  outline: "none",
+                }}
+              />
+              <input
+                type="text"
+                value={namespace}
+                onChange={(e) => setNamespace(e.target.value)}
+                placeholder="crucible"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  background: "#18181b",
+                  border: "1px solid #27272a",
+                  borderRadius: "6px",
+                  color: "#f4f4f5",
+                  fontSize: "13px",
+                  outline: "none",
+                }}
+              />
+            </div>
           </div>
 
           {/* Step 2: Model Selection */}

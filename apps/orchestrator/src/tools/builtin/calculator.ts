@@ -13,7 +13,7 @@ export const calculatorTool: ToolDefinition<
   }),
   execute: async ({ expression }) => {
     const sanitized = expression.replace(/[^0-9+\-*/().%\s^]/g, "");
-    // eslint-disable-next-line no-new-func
+
     const result = Function(`"use strict"; return (${sanitized});`)();
     return { result: Number(result) };
   },

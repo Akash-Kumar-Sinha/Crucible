@@ -1,81 +1,19 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
-import {
-  Shield,
-  Layers,
-  Radio,
-  TerminalSquare,
-  GitBranch,
-  Lock,
-  Activity,
-  ArrowUpRight,
-  Cpu,
-} from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { BackgroundBeams } from "@/components/ui/background-beams";
-import { ProximityGlowCard } from "@/components/ui/proximity-glow";
-import { CodeBlock } from "@/components/ui/code-block";
 import { RadialSeparator } from "@/components/ui/radial-separator";
-import { Notch } from "@/components/ui/notch";
 import { GooeyInput } from "@/components/ui/gooey-input";
-import { LoaderFive } from "@/components/ui/loader";
 import { Button } from "@/components/ui/button";
-import { Logo, CrucibleWordmark } from "@/components/Logo";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+
 import { Header } from "@/components/home/header";
 import { HeroSection } from "@/components/home/hero-section";
 import { Features } from "@/components/home/features";
 import { About } from "@/components/home/about";
 import { Footer } from "@/components/home/footer";
 import { NotchSection } from "@/components/home/notch-section";
-
-const FEATURES = [
-  {
-    index: "01",
-    title: "Policy Guardrails",
-    subtitle:
-      "Human checkpoints intercept and pause dangerous or irreversible tool calls before they execute on the host.",
-    icon: Shield,
-    tags: [
-      "Human in the Loop",
-      "Irreversible Action Policy",
-      "Turn Budget Enforcer",
-    ],
-  },
-  {
-    index: "02",
-    title: "Sandboxed Compute",
-    subtitle:
-      "High-throughput Rust execution core isolated via Linux cgroups v2, ephemeral OverlayFS, and strict nftables network airgapping.",
-    icon: Cpu,
-    tags: ["cgroups v2", "OverlayFS Union Mount", "0.4ms gRPC IPC"],
-  },
-  {
-    index: "03",
-    title: "Multi-Session Actors",
-    subtitle:
-      "Actor-based orchestration with concurrent agent execution loops, strict Zod envelope schemas, and Redis persistence.",
-    icon: Layers,
-    tags: ["Actor Model FSM", "Redis Hot Cache", "Zod Envelope V1"],
-  },
-  {
-    index: "04",
-    title: "Live Observability",
-    subtitle:
-      "W3C Distributed TraceContext propagation, structured Pino telemetry, per-session latency histograms, and tool error rates.",
-    icon: Activity,
-    tags: ["W3C TraceContext", "Latency Percentiles", "Pino Structured Logs"],
-  },
-];
 
 export default function LandingPage() {
   const router = useRouter();

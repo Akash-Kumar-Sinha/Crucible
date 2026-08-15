@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: orchestrator
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: CRUCIBLE_NAMESPACE
+              value: "crucible-prod"
+            - name: CRUCIBLE_TENANT_ID
+              value: "crucible-prod"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: web
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_PUBLIC_CRUCIBLE_TENANT_ID
+              value: "crucible-prod"
+            - name: NEXT_PUBLIC_CRUCIBLE_NAMESPACE
+              value: "crucible-prod"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: executor-grpc
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: executor-grpc
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"

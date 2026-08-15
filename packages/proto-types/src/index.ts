@@ -95,14 +95,44 @@ export function loadExecutorProtoDefinition(): grpc.GrpcObject {
   return grpc.loadPackageDefinition(packageDefinition);
 }
 
+function getGrpcObjectMember(
+  parent: grpc.GrpcObject,
+  key: string,
+): grpc.GrpcObject {
+  const value = parent[key];
+
+  if (typeof value === "object" && value !== null) {
+    return value as grpc.GrpcObject;
+  }
+
+  throw new Error(`Expected protobuf namespace member ${key}`);
+}
+
+function getServiceClientConstructor(
+  parent: grpc.GrpcObject,
+  key: string,
+): grpc.ServiceClientConstructor {
+  const value = parent[key];
+
+  if (typeof value === "function") {
+    return value as grpc.ServiceClientConstructor;
+  }
+
+  throw new Error(`Expected protobuf service client constructor ${key}`);
+}
+
 export function createExecutorClient(
   address: string,
   credentials: grpc.ChannelCredentials = grpc.credentials.createInsecure(),
 ): ExecutorServiceClient {
   const proto = loadExecutorProtoDefinition();
-  const crucible = proto.crucible as any;
-  const executor = crucible.executor.v1;
-  const ExecutorService = executor.ExecutorService;
+  const crucible = getGrpcObjectMember(proto, "crucible");
+  const executor = getGrpcObjectMember(crucible, "executor");
+  const v1 = getGrpcObjectMember(executor, "v1");
+  const ExecutorService = getServiceClientConstructor(v1, "ExecutorService");
 
-  return new ExecutorService(address, credentials) as ExecutorServiceClient;
+  return new ExecutorService(
+    address,
+    credentials,
+  ) as unknown as ExecutorServiceClient;
 }

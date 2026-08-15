@@ -6,10 +6,8 @@ import {
   SessionRepository,
   RunRepository,
   RedisSessionStore,
-  getPrismaClient,
   closePostgres,
 } from "../persistence";
-import { logger } from "../observability/logger";
 
 async function runEndToEndPersistenceTest() {
   console.log("\n============================================================");

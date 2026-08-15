@@ -1,0 +1,15 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: crucible-cluster
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30000
+        hostPort: 3000
+        protocol: TCP
+      - containerPort: 30040
+        hostPort: 4000
+        protocol: TCP
+      - containerPort: 30051
+        hostPort: 50051
+        protocol: TCP

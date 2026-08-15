@@ -40,6 +40,8 @@ describe("Session Actor", () => {
     expect(session.getStatus()).toBe("idle");
     expect(session.getMessages().length).toBe(0);
     expect(session.getMetadata().customMetadata).toEqual({
+      tenantId: "default",
+      namespace: "crucible",
       userId: "user_123",
     });
   });
@@ -157,6 +159,38 @@ describe("Session Actor", () => {
     const result = await session.prompt("Delete the db");
     expect(result.state).toBe("done");
     expect(approvalCallsCount).toBe(1);
+  });
+
+  it("should automatically derive and save title from the first user prompt", async () => {
+    const mockProvider = new MockProvider([
+      {
+        content: "Comedy is the architecture of laughter.",
+        finishReason: "stop",
+      },
+    ]);
+
+    const session = new Session({
+      sessionId: "sess_title_test",
+      provider: mockProvider,
+    });
+
+    expect(session.title).toBeUndefined();
+
+    let titleChangeEvent = "";
+    session.on("titleChange", (t) => {
+      titleChangeEvent = t;
+    });
+
+    await session.prompt(
+      "Comedy: The Architecture of Laughter\nIntroduction\nThe word comedy carries...",
+    );
+
+    expect(session.title).toBe("Comedy: The Architecture of Laughter");
+    expect(titleChangeEvent).toBe("Comedy: The Architecture of Laughter");
+    expect(session.getMetadata().title).toBe(
+      "Comedy: The Architecture of Laughter",
+    );
+    expect(session.getMetadata().customMetadata?.messages).toBeDefined();
   });
 });
 

@@ -1,6 +1,5 @@
-import Redis, { type RedisOptions } from "ioredis";
+import Redis from "ioredis";
 import { logger } from "../../observability/logger";
-import { getErrorReporter } from "../../observability/error-reporter";
 
 export interface HotSessionState {
   sessionId: string;

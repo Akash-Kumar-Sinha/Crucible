@@ -14,8 +14,6 @@ const NAV_LINKS = [
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 
-const EASE = [0.22, 1, 0.36, 1] as const;
-
 export const Header = () => {
   const router = useRouter();
   return (

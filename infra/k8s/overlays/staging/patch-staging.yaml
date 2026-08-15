@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: orchestrator
+          env:
+            - name: NODE_ENV
+              value: "staging"
+            - name: CRUCIBLE_NAMESPACE
+              value: "crucible-staging"
+            - name: CRUCIBLE_TENANT_ID
+              value: "crucible-staging"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: web
+          env:
+            - name: NODE_ENV
+              value: "staging"
+            - name: NEXT_PUBLIC_CRUCIBLE_TENANT_ID
+              value: "crucible-staging"
+            - name: NEXT_PUBLIC_CRUCIBLE_NAMESPACE
+              value: "crucible-staging"

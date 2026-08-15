@@ -26,7 +26,10 @@ export async function GET(): Promise<NextResponse<WebHealthResponse>> {
   const orchestratorUrl =
     process.env.ORCHESTRATOR_URL || "http://localhost:4000";
 
-  let orchestratorStatus: "ok" | "degraded" | "failed" = "degraded";
+  type OrchestratorStatus = "ok" | "degraded" | "failed";
+
+  let orchestratorStatus: OrchestratorStatus;
+
   let latencyMs: number | undefined;
   let message: string | undefined;
 

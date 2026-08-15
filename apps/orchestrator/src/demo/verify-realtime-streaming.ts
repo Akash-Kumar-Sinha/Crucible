@@ -3,7 +3,6 @@ import { SessionManager } from "../session/session-manager";
 import { ToolRegistry } from "../tools/registry";
 import { createBashTool } from "../tools/builtin/bash";
 import { LocalExecutor } from "../execution/local-executor";
-import { SseStreamHandler } from "../streaming/sse";
 import { startHttpServer } from "../http/server";
 import type {
   ModelProvider,
@@ -181,7 +180,7 @@ async function main() {
     "Triggering concurrent prompts in Session Alpha and Session Beta simultaneously...\n",
   );
 
-  const [resAlpha, resBeta] = await Promise.all([
+  const [_resAlpha, _resBeta] = await Promise.all([
     sessionAlpha.prompt("start alpha task"),
     sessionBeta.prompt("start beta task"),
   ]);

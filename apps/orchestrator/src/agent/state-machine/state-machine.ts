@@ -48,6 +48,9 @@ export class AgentStateMachine {
 
   restoreMessages(messages: AgentMessage[]): void {
     this.context.messages = [...messages];
+    if (messages.length > 0) {
+      this.state = "done";
+    }
   }
 
   onTransition(listener: TransitionListener): () => void {

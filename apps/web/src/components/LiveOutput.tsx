@@ -1,15 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { motion, AnimatePresence } from "motion/react";
-import {
-  Terminal,
-  BrainCircuit,
-  ChevronDown,
-  ChevronUp,
-  Radio,
-} from "lucide-react";
+import { motion } from "motion/react";
+import { Terminal, BrainCircuit, Radio } from "lucide-react";
 import type { ToolCall } from "../api/orchestrator-client";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
 
 export interface LiveOutputProps {
   streamingThought?: string;
@@ -17,8 +17,14 @@ export interface LiveOutputProps {
   activeToolCalls?: ToolCall[];
   toolStdout?: string;
   toolStderr?: string;
-  isConnected?: boolean;
-  status?: "idle" | "running" | "done" | "error" | "awaiting_human";
+  _isConnected?: boolean;
+  status?: "idle" | "queued" | "running" | "done" | "error" | "awaiting_human";
+  agentState?:
+    | "awaiting_model"
+    | "awaiting_tool"
+    | "awaiting_human"
+    | "done"
+    | "error";
 }
 
 export function LiveOutput({
@@ -27,21 +33,47 @@ export function LiveOutput({
   activeToolCalls = [],
   toolStdout = "",
   toolStderr = "",
-  isConnected = true,
+  _isConnected = true,
   status = "idle",
+  agentState = "awaiting_model",
 }: LiveOutputProps) {
-  const [thoughtExpanded, setThoughtExpanded] = React.useState(true);
-  const [terminalExpanded, setTerminalExpanded] = React.useState(true);
+  const [thoughtAccordionValue, setThoughtAccordionValue] = React.useState<
+    string | null
+  >("thinking");
+  const prevOutputActiveRef = React.useRef(false);
   const terminalEndRef = React.useRef<HTMLDivElement>(null);
   const tokensEndRef = React.useRef<HTMLDivElement>(null);
 
-  // Auto-scroll terminal and token stream
+  const isScalingUp =
+    status === "running" &&
+    !_isConnected &&
+    !streamingThought &&
+    !streamingTokens &&
+    activeToolCalls.length === 0 &&
+    !toolStdout &&
+    !toolStderr;
+  // Automatically keep thinking accordion open while model is thinking,
+  // and automatically close it once output is finalized or starts streaming tokens
   React.useEffect(() => {
-    if (terminalExpanded) {
-      terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [toolStdout, toolStderr, terminalExpanded]);
+    const isOutputActive =
+      Boolean(streamingTokens) || status === "done" || agentState === "done";
 
+    if (isOutputActive && !prevOutputActiveRef.current) {
+      // Output started / finalized -> auto-close thinking accordion
+      setThoughtAccordionValue(null);
+    } else if (
+      !isOutputActive &&
+      Boolean(streamingThought) &&
+      prevOutputActiveRef.current
+    ) {
+      // New reasoning cycle started -> auto-open thinking accordion
+      setThoughtAccordionValue("thinking");
+    }
+
+    prevOutputActiveRef.current = isOutputActive;
+  }, [streamingThought, streamingTokens, status, agentState]);
+
+  // Auto-scroll token stream
   React.useEffect(() => {
     tokensEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [streamingTokens]);
@@ -53,166 +85,173 @@ export function LiveOutput({
     Boolean(toolStderr) ||
     activeToolCalls.length > 0;
 
-  if (!hasContent && status !== "running") {
+  if (!hasContent && status !== "running" && status !== "queued") {
     return null;
   }
 
+  const agentStateLabel = isScalingUp
+    ? "Scaling Up"
+    : status === "queued"
+      ? "Queued"
+      : agentState === "awaiting_tool"
+        ? "Executing Sandbox Tools"
+        : agentState === "awaiting_human"
+          ? "Awaiting Human Review"
+          : agentState === "done"
+            ? "Execution Complete"
+            : agentState === "error"
+              ? "Execution Failed"
+              : "Generating Reasoning & Plan";
+
   return (
     <motion.section
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -12 }}
-      transition={{ type: "spring", stiffness: 350, damping: 26 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ type: "spring", stiffness: 400, damping: 28 }}
       aria-label="Real-time Execution Stream"
-      className="my-4 overflow-hidden rounded-lg
- border border-white/10 bg-zinc-900/80 shadow-2xl backdrop-blur-xl"
+      className="my-3.5 flex flex-col gap-1.5 items-start"
     >
-      {/* Stream Status Header */}
-      <header className="flex items-center justify-between border-b border-white/8 bg-zinc-950/70 px-4 py-2.5 text-xs">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-500">
-            <Radio size={13} className="animate-pulse" />
-            <span>CRUCIBLE LIVE STREAM</span>
+      {/* Sender Header with Live Pulse */}
+      <div className="flex items-center gap-2 px-1 text-xs font-medium text-zinc-400">
+        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 border border-white/10 text-zinc-300">
+          <Radio size={11} className="animate-pulse" />
+        </div>
+        <span className="text-[11px] font-semibold text-zinc-200">
+          Crucible Agent
+        </span>
+        <span className="rounded-md bg-zinc-800 border border-white/10 px-1.5 py-0.2 text-[10px] font-mono text-zinc-300">
+          {agentStateLabel}
+        </span>
+      </div>
+
+      {/* Main Streaming Glass Container */}
+      <div className="w-full max-w-[88%] sm:max-w-[82%] rounded-2xl rounded-tl-sm p-4 sm:p-5 bg-zinc-900/70 border border-white/10 shadow-xl backdrop-blur-xl space-y-3">
+        {isScalingUp && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-amber-200">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
+              <div className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" />
+              Scaling up
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+              Kubernetes is provisioning capacity for this tenant namespace. The
+              session is live, but the sandbox is waiting on a new node.
+            </p>
           </div>
-          <span className="text-zinc-600">|</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-              status === "running"
-                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                : status === "awaiting_human"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                  : status === "error"
-                    ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                    : "bg-primary/10 text-primary border border-primary/20"
-            }`}
-          >
-            {status}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 text-[11px] text-zinc-400">
-          <span>SSE Channel</span>
-          <span
-            className={`h-2 w-2 rounded-full ${
-              isConnected ? "bg-primary" : "bg-amber-400"
-            }`}
-          />
-        </div>
-      </header>
-
-      <div className="p-4 space-y-3">
-        {/* Streaming Thought / Reasoning Box */}
+        )}
+        {/* Streaming Thought / Reasoning Box using builtin Accordion */}
         {streamingThought && (
-          <div className="overflow-hidden rounded-lg border border-amber-500/20 bg-amber-950/10">
-            <button
-              type="button"
-              onClick={() => setThoughtExpanded(!thoughtExpanded)}
-              className="flex w-full items-center justify-between px-3.5 py-2 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+          <Accordion
+            value={thoughtAccordionValue}
+            onValueChange={setThoughtAccordionValue}
+            className="w-full "
+          >
+            <AccordionItem
+              value="thinking"
+              className="border border-white/10 bg-black rounded-xl"
             >
-              <div className="flex items-center gap-2 text-[11px]">
-                <BrainCircuit size={14} />
-                <span>ACTIVE MODEL REASONING</span>
-              </div>
-              {thoughtExpanded ? (
-                <ChevronUp size={13} />
-              ) : (
-                <ChevronDown size={13} />
-              )}
-            </button>
-
-            <AnimatePresence>
-              {thoughtExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="border-t border-amber-500/10 px-3.5 py-2.5 text-xs text-amber-200/90 whitespace-pre-wrap leading-relaxed">
-                    {streamingThought}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              <AccordionTrigger
+                className="px-4 py-2.5 hover:bg-zinc-900/60 text-neutral-400"
+                chevronClassName="text-neutral-400 group-hover:text-neutral-300"
+              >
+                <div className="flex items-center gap-2">
+                  <BrainCircuit
+                    size={13}
+                    className="animate-pulse text-neutral-400"
+                  />
+                  <span className="font-mono text-[11px] font-medium uppercase tracking-wider text-neutral-400">
+                    Active Model Reasoning
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="border-t border-white/5 px-4 py-3 text-xs text-neutral-400 whitespace-pre-wrap leading-relaxed ">
+                {streamingThought}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
 
         {/* Active Tool Call Executions */}
         {activeToolCalls.length > 0 && (
           <div className="space-y-2">
-            {activeToolCalls.map((tc) => (
-              <div
-                key={tc.id}
-                className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs"
-              >
-                <div className="flex items-center gap-2">
-                  <Terminal size={14} className="text-primary animate-spin" />
-                  <span className="font-mono font-medium text-primary">
-                    Executing Tool: {tc.name}
-                  </span>
+            {activeToolCalls.map((tc, tcIndex) => {
+              const toolName = tc.name || tc.toolName || "tool";
+              const toolArgs = tc.arguments || tc.args || {};
+              const hasArgs =
+                typeof toolArgs === "object" &&
+                toolArgs !== null &&
+                Object.keys(toolArgs).length > 0;
+
+              return (
+                <div
+                  key={tc.id || tc.toolCallId || `${toolName}-${tcIndex}`}
+                  className="rounded-xl border border-white/8 bg-black p-3.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Terminal
+                        size={13}
+                        className="text-neutral-400 animate-spin"
+                      />
+                      <span className="font-mono text-xs font-semibold text-neutral-200">
+                        Executing: {toolName}
+                      </span>
+                    </div>
+                    {tc.id && (
+                      <span className="text-[10px] font-mono text-neutral-500">
+                        {tc.id}
+                      </span>
+                    )}
+                  </div>
+                  {hasArgs && (
+                    <pre className="font-mono text-[11px] text-neutral-400 bg-zinc-950 p-2.5 mt-2.5 rounded-lg border border-white/5 overflow-x-auto">
+                      {JSON.stringify(toolArgs, null, 2)}
+                    </pre>
+                  )}
                 </div>
-                <span className="text-[10px] text-primary/70">{tc.id}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* Live Terminal Stdout & Stderr Output */}
         {(toolStdout || toolStderr) && (
-          <div className="overflow-hidden rounded-lg border border-white/8 bg-zinc-950/90">
-            <button
-              type="button"
-              onClick={() => setTerminalExpanded(!terminalExpanded)}
-              className="flex w-full items-center justify-between px-3.5 py-2 text-xs font-semibold text-zinc-300 hover:text-white transition-colors"
+          <Accordion defaultValue="terminal" className="w-full ">
+            <AccordionItem
+              value="terminal"
+              className="border border-white/10 bg-black rounded-xl"
             >
-              <div className="flex items-center gap-2 text-[11px]">
-                <Terminal size={14} className="text-primary" />
-                <span>SANDBOX PROCESS OUTPUT (STDOUT / STDERR)</span>
-              </div>
-              {terminalExpanded ? (
-                <ChevronUp size={13} />
-              ) : (
-                <ChevronDown size={13} />
-              )}
-            </button>
-
-            <AnimatePresence>
-              {terminalExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="border-t border-white/5 p-3 text-xs leading-relaxed max-h-56 overflow-y-auto">
-                    {toolStdout && (
-                      <pre className="text-zinc-200 whitespace-pre-wrap">
-                        {toolStdout}
-                      </pre>
-                    )}
-                    {toolStderr && (
-                      <pre className="text-rose-400/90 whitespace-pre-wrap mt-2">
-                        {toolStderr}
-                      </pre>
-                    )}
-                    <div ref={terminalEndRef} />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              <AccordionTrigger
+                className="px-4 py-2.5 hover:bg-zinc-900/60 text-neutral-400"
+                chevronClassName="text-neutral-400 group-hover:text-neutral-300"
+              >
+                <div className="flex items-center gap-2 font-mono text-[11px] text-neutral-400">
+                  <Terminal size={13} className="text-neutral-400" />
+                  <span>SANDBOX PROCESS LOGS</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="border-t border-white/5 px-4 py-3 text-xs leading-relaxed max-h-60 overflow-y-auto font-mono text-neutral-400">
+                {toolStdout && (
+                  <pre className="text-neutral-300 whitespace-pre-wrap">
+                    {toolStdout}
+                  </pre>
+                )}
+                {toolStderr && (
+                  <pre className="text-rose-400 whitespace-pre-wrap mt-2">
+                    {toolStderr}
+                  </pre>
+                )}
+                <div ref={terminalEndRef} />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
 
         {/* Live Token Streaming Output */}
         {streamingTokens && (
-          <div className="rounded-lg border border-white/8 bg-zinc-950/70 p-3.5 text-sm leading-relaxed text-zinc-200">
-            <div className="flex items-center gap-2 mb-1.5 text-xs text-primary/80">
-              <span>Token Stream</span>
-            </div>
-            <div className="whitespace-pre-wrap font-sans">
-              {streamingTokens}
-              <span className="inline-block h-3.5 w-1.5 bg-primary ml-1 animate-pulse" />
-            </div>
+          <div className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap ">
+            {streamingTokens}
+            <span className="inline-block h-3.5 w-1.5 bg-zinc-300 ml-1 animate-pulse align-middle" />
             <div ref={tokensEndRef} />
           </div>
         )}

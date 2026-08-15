@@ -1,5 +1,3 @@
-import { EventEmitter } from "node:events";
-import type { Session } from "../session/session";
 import type { SessionManager } from "../session/session-manager";
 import { getErrorReporter } from "../observability/error-reporter";
 import type { AgentMessage, ToolCall, ToolResult } from "../schema/envelope";
@@ -158,7 +156,7 @@ export class SseStreamHandler {
         controllerRef.enqueue(
           encoder.encode(this.formatSseEvent(eventType, payload)),
         );
-      } catch (err) {
+      } catch (_err) {
         cleanup(true);
       }
     };
@@ -172,7 +170,13 @@ export class SseStreamHandler {
     const onStateChange = (to: string, from: string) =>
       sendEvent("state_change", { to, from });
     const onStatusChange = (status: string, prev: string) =>
-      sendEvent("status_change", { status, prev });
+      sendEvent("status_change", { status, prev, title: session.title });
+    const onTitleChange = (title: string) =>
+      sendEvent("status_change", {
+        title,
+        status: session.getStatus(),
+        state: session.getState(),
+      });
     const onMessage = (msg: AgentMessage) =>
       sendEvent("message", { message: msg });
     const onToken = (delta: string) => sendEvent("token", { delta });
@@ -182,13 +186,24 @@ export class SseStreamHandler {
       sendEvent("tool_stderr", data);
     const onDone = (finalResponse: string) =>
       sendEvent("done", { finalResponse });
-    const onError = (error: unknown) => sendEvent("error", { error });
+    const onError = (error: unknown) => {
+      const serialized =
+        error instanceof Error
+          ? {
+              message: error.message,
+              name: error.name,
+              stack: error.stack,
+            }
+          : error;
+      sendEvent("error", { error: serialized });
+    };
 
     session.on("thought", onThought);
     session.on("action", onAction);
     session.on("observation", onObservation);
     session.on("stateChange", onStateChange);
     session.on("statusChange", onStatusChange);
+    session.on("titleChange", onTitleChange);
     session.on("message", onMessage);
     session.on("token", onToken);
     session.on("toolStdout", onToolStdout);
@@ -210,6 +225,7 @@ export class SseStreamHandler {
       session.off("observation", onObservation);
       session.off("stateChange", onStateChange);
       session.off("statusChange", onStatusChange);
+      session.off("titleChange", onTitleChange);
       session.off("message", onMessage);
       session.off("token", onToken);
       session.off("toolStdout", onToolStdout);
@@ -221,6 +237,13 @@ export class SseStreamHandler {
         this.activeStreams.get(sessionId)!.delete(controllerRef);
         if (this.activeStreams.get(sessionId)!.size === 0) {
           this.activeStreams.delete(sessionId);
+        }
+        if (!req.signal.aborted) {
+          try {
+            controllerRef.close();
+          } catch {
+            // already closed
+          }
         }
       }
 
@@ -259,6 +282,7 @@ export class SseStreamHandler {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
       },

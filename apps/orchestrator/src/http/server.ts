@@ -8,7 +8,12 @@ import {
   readFileTool,
 } from "../tools/builtin";
 import { OpenRouterProvider, MockModelProvider } from "../provider";
-import { LocalExecutor, DockerExecutor, GrpcExecutor } from "../execution";
+import {
+  LocalExecutor,
+  DockerExecutor,
+  GrpcExecutor,
+  KubernetesJobExecutor,
+} from "../execution";
 import { SessionRouteHandler } from "./routes/sessions";
 import {
   handleHealthzRequest,
@@ -212,7 +217,7 @@ export function createHttpRouter(
     // GET /sessions or POST /sessions
     if (normalizedPath === "/sessions" || normalizedPath === "/sessions/") {
       if (method === "GET") {
-        return handler.listSessions();
+        return handler.listSessions(req);
       }
       if (method === "POST") {
         return handler.createSession(req);
@@ -305,14 +310,21 @@ export function startHttpServer(options: HttpServerOptions = {}) {
     const grpcExecutor = new GrpcExecutor({
       fallbackExecutor: dockerExecutor,
     });
+    const k8sExecutor = new KubernetesJobExecutor({
+      fallbackExecutor: dockerExecutor,
+    });
 
-    const executorMode = process.env.CRUCIBLE_EXECUTOR || "docker";
+    const executorMode = (
+      process.env.CRUCIBLE_EXECUTOR || "docker"
+    ).toLowerCase();
     const executor =
       executorMode === "grpc"
         ? grpcExecutor
-        : executorMode === "local"
-          ? localExecutor
-          : dockerExecutor;
+        : executorMode === "k8s" || executorMode === "kubernetes"
+          ? k8sExecutor
+          : executorMode === "local"
+            ? localExecutor
+            : dockerExecutor;
     const tools = new ToolRegistry()
       .register(calculatorTool)
       .register(getCurrentTimeTool)

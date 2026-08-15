@@ -23,3 +23,25 @@
      ```bash
      docker compose ps
      ```
+
+3. **Kubernetes Migration & Deployment (kind / minikube)**:
+   - Create local kind cluster:
+     ```bash
+     make k8s-cluster
+     ```
+   - Configure secrets (set your OpenRouter API key):
+     ```bash
+     kubectl create namespace crucible --dry-run=client -o yaml | kubectl apply -f -
+     kubectl -n crucible create secret generic crucible-secrets \
+       --from-literal=OPENROUTER_API_KEY="sk-or-v1-your-key-here" \
+       --from-literal=POSTGRES_PASSWORD="crucible_secret" \
+       --dry-run=client -o yaml | kubectl apply -f -
+     ```
+   - Apply Kustomize manifests:
+     ```bash
+     make k8s-apply
+     ```
+   - Verify pods and jobs under restricted PodSecurity standard:
+     ```bash
+     kubectl -n crucible get pods -w
+     ```

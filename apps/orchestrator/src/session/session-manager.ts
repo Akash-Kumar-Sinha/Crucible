@@ -22,6 +22,14 @@ export class SessionManager extends EventEmitter {
   private runRepository?: RunRepository;
   private redisStore?: RedisSessionStore;
   private autoPersist: boolean;
+  private readonly maxConcurrentExecutions: number;
+  private activeExecutionCount = 0;
+  private readonly pendingExecutionQueue: Array<{
+    sessionId: SessionId;
+    prompt: string;
+    resolve: (result: AgentLoopResult) => void;
+    reject: (err: unknown) => void;
+  }> = [];
 
   constructor(config: SessionManagerConfig = {}) {
     super();
@@ -32,12 +40,16 @@ export class SessionManager extends EventEmitter {
       defaultMaxSteps: config.defaultMaxSteps,
       defaultModel: config.defaultModel,
       maxConcurrentSessions: config.maxConcurrentSessions,
+      maxConcurrentExecutions: config.maxConcurrentExecutions,
     };
 
     this.sessionRepository = config.sessionRepository;
     this.runRepository = config.runRepository;
     this.redisStore = config.redisStore;
     this.autoPersist = config.autoPersist ?? true;
+    this.maxConcurrentExecutions =
+      config.maxConcurrentExecutions ||
+      Number(process.env.CRUCIBLE_MAX_CONCURRENT_EXECUTIONS || "1");
   }
 
   private createSessionInternal(options: CreateSessionOptions = {}): Session {
@@ -50,6 +62,7 @@ export class SessionManager extends EventEmitter {
       );
     }
 
+    // TOOD: Session id is created here - if not provided
     const sessionId =
       options.sessionId ||
       `sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -63,6 +76,8 @@ export class SessionManager extends EventEmitter {
     const session = new Session({
       sessionId,
       title: options.title,
+      tenantId: options.tenantId,
+      namespace: options.namespace,
       systemPrompt: options.systemPrompt || this.config.defaultSystemPrompt,
       model: options.model || this.config.defaultModel,
       temperature: options.temperature,
@@ -199,8 +214,43 @@ export class SessionManager extends EventEmitter {
       }
     });
 
+    session.on("titleChange", (newTitle) => {
+      this.emit("sessionUpdated", session.getSummary());
+
+      if (this.autoPersist) {
+        if (this.sessionRepository) {
+          this.sessionRepository
+            .updateSession(session.id, {
+              title: newTitle,
+              metadata: {
+                ...session.metadata,
+                messages: session.getMessages(),
+              },
+            })
+            .catch(() => {});
+        }
+        if (this.redisStore) {
+          this.redisStore
+            .setHotState(session.id, {
+              sessionId: session.id,
+              status: session.getStatus(),
+              agentState: session.getState(),
+              title: newTitle,
+              modelSlug:
+                (session.getSummary().metadata?.model as string) || "default",
+              turnCount: session.getSummary().turnCount,
+              lastActiveAt: Date.now(),
+              metadata: {
+                ...session.metadata,
+                messages: session.getMessages(),
+              },
+            })
+            .catch(() => {});
+        }
+      }
+    });
+
     session.on("turnCompleted", (turnData: any) => {
-      // Background async fallback if prompt() was called directly without dispatch()
       if (this.autoPersist) {
         this.persistTurnFromEvent(session, turnData).catch((err) => {
           logger.error(
@@ -222,6 +272,48 @@ export class SessionManager extends EventEmitter {
           .catch(() => {});
       }
     });
+  }
+
+  private releaseExecutionSlot(): void {
+    if (this.activeExecutionCount > 0) {
+      this.activeExecutionCount -= 1;
+    }
+
+    const next = this.pendingExecutionQueue.shift();
+    if (!next) {
+      return;
+    }
+
+    void this.startQueuedExecution(next);
+  }
+
+  private async startQueuedExecution(item: {
+    sessionId: SessionId;
+    prompt: string;
+    resolve: (result: AgentLoopResult) => void;
+    reject: (err: unknown) => void;
+  }): Promise<void> {
+    const session = this.getOrThrow(item.sessionId);
+    session.queue();
+
+    this.activeExecutionCount += 1;
+    try {
+      const result = await session.prompt(item.prompt);
+      if (this.autoPersist) {
+        await this.persistTurnFromEvent(session, {
+          turnNumber: session.getSummary().turnCount,
+          thought: result.history?.[result.history.length - 1]?.thought,
+          modelOutput: result.finalResponse,
+          history: result.history,
+          error: result.error,
+        });
+      }
+      item.resolve(result);
+    } catch (err) {
+      item.reject(err);
+    } finally {
+      this.releaseExecutionSlot();
+    }
   }
 
   /**
@@ -251,20 +343,30 @@ export class SessionManager extends EventEmitter {
           metadata: (record.metadata as Record<string, unknown>) || {},
         });
 
-        // Reconstruct messages from persisted turns
-        const messages: any[] = [];
-        for (const turn of record.turns) {
-          if (turn.thought || turn.modelOutput) {
-            messages.push({
-              role: "assistant",
-              content: turn.modelOutput || undefined,
-              thought: turn.thought || undefined,
-              toolCalls: turn.toolCalls.map((tc) => ({
-                id: tc.id,
-                name: tc.name,
-                arguments: tc.arguments,
-              })),
-            });
+        // Reconstruct messages prioritizing persisted metadata messages
+        let messages: any[] = [];
+        const rawMetadata = record.metadata as Record<string, unknown> | null;
+        if (
+          rawMetadata &&
+          typeof rawMetadata === "object" &&
+          Array.isArray(rawMetadata.messages) &&
+          rawMetadata.messages.length > 0
+        ) {
+          messages = rawMetadata.messages;
+        } else {
+          for (const turn of record.turns) {
+            if (turn.thought || turn.modelOutput) {
+              messages.push({
+                role: "assistant",
+                content: turn.modelOutput || undefined,
+                thought: turn.thought || undefined,
+                toolCalls: turn.toolCalls.map((tc) => ({
+                  id: tc.id,
+                  name: tc.name,
+                  arguments: tc.arguments,
+                })),
+              });
+            }
           }
         }
 
@@ -318,8 +420,17 @@ export class SessionManager extends EventEmitter {
     return this.sessions.has(id);
   }
 
-  list(): SessionSummary[] {
-    return Array.from(this.sessions.values()).map((s) => s.getSummary());
+  list(filter?: { tenantId?: string; namespace?: string }): SessionSummary[] {
+    let summaries = Array.from(this.sessions.values()).map((s) =>
+      s.getSummary(),
+    );
+    if (filter?.tenantId && filter.tenantId !== "all") {
+      summaries = summaries.filter((s) => s.tenantId === filter.tenantId);
+    }
+    if (filter?.namespace && filter.namespace !== "all") {
+      summaries = summaries.filter((s) => s.namespace === filter.namespace);
+    }
+    return summaries;
   }
 
   getAll(): Session[] {
@@ -419,16 +530,45 @@ export class SessionManager extends EventEmitter {
 
   async dispatch(id: SessionId, prompt: string): Promise<AgentLoopResult> {
     const session = this.getOrThrow(id);
-    const result = await session.prompt(prompt);
-    if (this.autoPersist) {
-      await this.persistTurnFromEvent(session, {
-        turnNumber: session.getSummary().turnCount,
-        thought: result.history?.[result.history.length - 1]?.thought,
-        modelOutput: result.finalResponse,
-        history: result.history,
-        error: result.error,
-      });
+
+    if (this.activeExecutionCount < this.maxConcurrentExecutions) {
+      this.activeExecutionCount += 1;
+      try {
+        const result = await session.prompt(prompt);
+        if (this.autoPersist) {
+          await this.persistTurnFromEvent(session, {
+            turnNumber: session.getSummary().turnCount,
+            thought: result.history?.[result.history.length - 1]?.thought,
+            modelOutput: result.finalResponse,
+            history: result.history,
+            error: result.error,
+          });
+        }
+        return result;
+      } finally {
+        this.releaseExecutionSlot();
+      }
     }
-    return result;
+
+    session.queue();
+
+    return new Promise<AgentLoopResult>((resolve, reject) => {
+      this.pendingExecutionQueue.push({
+        sessionId: id,
+        prompt,
+        resolve,
+        reject,
+      });
+      this.emit("sessionQueued", session.getSummary());
+      logger.info(
+        {
+          sessionId: id,
+          queueDepth: this.pendingExecutionQueue.length,
+          activeExecutionCount: this.activeExecutionCount,
+          maxConcurrentExecutions: this.maxConcurrentExecutions,
+        },
+        "Queued session execution request",
+      );
+    });
   }
 }

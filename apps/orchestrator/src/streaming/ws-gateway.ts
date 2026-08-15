@@ -1,6 +1,5 @@
 import type { ServerWebSocket } from "bun";
 import type { SessionManager } from "../session/session-manager";
-import type { Session } from "../session/session";
 import { getErrorReporter } from "../observability/error-reporter";
 import type { AgentMessage, ToolCall, ToolResult } from "../schema/envelope";
 
@@ -307,7 +306,17 @@ export class WebSocketGateway {
       broadcast("tool_stderr", data);
     const onDone = (finalResponse: string) =>
       broadcast("done", { finalResponse });
-    const onError = (error: unknown) => broadcast("error", { error });
+    const onError = (error: unknown) => {
+      const serialized =
+        error instanceof Error
+          ? {
+              message: error.message,
+              name: error.name,
+              stack: error.stack,
+            }
+          : error;
+      broadcast("error", { error: serialized });
+    };
 
     session.on("thought", onThought);
     session.on("action", onAction);

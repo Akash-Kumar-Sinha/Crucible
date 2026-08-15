@@ -31,7 +31,7 @@ async function runDistributedTracingVerification() {
     title: "Session 2 - Shell",
   });
 
-  const [res1, res2] = await Promise.all([
+  const [_res1, _res2] = await Promise.all([
     session1.prompt("Calculate 42 * 10"),
     session2.prompt("Check system kernel"),
   ]);

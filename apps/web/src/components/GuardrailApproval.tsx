@@ -98,7 +98,7 @@ export function GuardrailApproval({
 
   const iconTone =
     decision === "approved"
-      ? "border-primary/30 bg-primary/15 text-primary"
+      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400"
       : decision === "rejected"
         ? "border-rose-500/30 bg-rose-500/15 text-rose-400"
         : "border-amber-500/30 bg-amber-500/15 text-amber-400";
@@ -226,10 +226,13 @@ export function GuardrailApproval({
                 size="sm"
                 onClick={() => handleDecision(true)}
                 disabled={isSubmitting}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                className="bg-white hover:bg-zinc-200 text-zinc-950 font-medium"
               >
                 {isSubmitting ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                  <Loader2
+                    data-icon="inline-start"
+                    className="animate-spin text-zinc-950"
+                  />
                 ) : (
                   <UserCheck data-icon="inline-start" />
                 )}
@@ -239,7 +242,7 @@ export function GuardrailApproval({
           ) : (
             <div
               className={`flex items-center gap-1.5 text-xs font-medium ${
-                decision === "approved" ? "text-primary" : "text-rose-400"
+                decision === "approved" ? "text-emerald-400" : "text-rose-400"
               }`}
             >
               {decision === "approved" ? (

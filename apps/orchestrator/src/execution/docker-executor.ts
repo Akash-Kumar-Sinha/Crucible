@@ -418,7 +418,7 @@ export class DockerExecutor implements Executor {
 
           // Capture container-level failures in ErrorReporter
           if (oomKilled) {
-            const oomMsg = `Container ${containerId} killed due to Out-Of-Memory (limit: ${memoryLimit} bytes)`;
+            const _oomMsg = `Container ${containerId} killed due to Out-Of-Memory (limit: ${memoryLimit} bytes)`;
             getErrorReporter().captureContainerFailure({
               containerId,
               image,

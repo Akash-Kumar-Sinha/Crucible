@@ -103,9 +103,7 @@ export const Notch = ({
   align = "center",
   onItemChange,
   closeOnSelect = true,
-  showSelectedValue = true,
   showDividers = true,
-  accentColor = "var(--primary, #3b82f6)",
   offset = 16,
   reveal = true,
   className,
@@ -146,9 +144,6 @@ export const Notch = ({
 
   const getSelectedId = (item: NotchItem) =>
     item.value ?? internalSelected[item.id] ?? item.options[0]?.id;
-
-  const getSelectedOption = (item: NotchItem) =>
-    item.options.find((o) => o.id === getSelectedId(item));
 
   const handleSelect = (item: NotchItem, option: NotchOption) => {
     if (item.value === undefined) {
@@ -231,7 +226,6 @@ export const Notch = ({
       className="flex w-fit items-center gap-1 p-1"
     >
       {items.map((item, index) => {
-        const selected = getSelectedOption(item);
         const isLast = index === items.length - 1;
 
         return (

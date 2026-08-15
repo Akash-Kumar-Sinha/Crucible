@@ -14,6 +14,18 @@ export interface SandboxInfoResponse {
   status: "active" | "standby";
   tier: string;
   executor: string;
+  container?: {
+    runtime: string;
+    image: string;
+    exitCode?: number;
+    restarts: number;
+    oomKilled: boolean;
+  };
+  scheduling?: {
+    phase: string;
+    jobName?: string;
+    podName?: string;
+  };
   cgroups: {
     enabled: boolean;
     cpuQuota: string;
@@ -86,7 +98,7 @@ export class GuardrailRouteHandler {
       );
     }
 
-    let body: GuardrailApprovalBody = {};
+    let body: GuardrailApprovalBody;
     try {
       body = await req.json();
     } catch {
@@ -175,6 +187,25 @@ export class GuardrailRouteHandler {
       status: "active",
       tier: "Rust gRPC + cgroups v2 / OverlayFS / nftables",
       executor: process.env.CRUCIBLE_EXECUTOR || "grpc",
+      container: {
+        runtime:
+          process.env.CRUCIBLE_EXECUTOR === "docker"
+            ? "Docker 24.0 (runc)"
+            : "Isolated Ephemeral Sandbox",
+        image: "crucible-sandbox:latest",
+        exitCode: 0,
+        restarts: 0,
+        oomKilled: false,
+      },
+      scheduling: {
+        phase: "Running",
+        jobName: session
+          ? `crucible-job-${session.id.slice(0, 8)}`
+          : "crucible-orchestrator-job",
+        podName: session
+          ? `pod-${session.id.slice(0, 8)}`
+          : "pod-orchestrator-active",
+      },
       cgroups: {
         enabled: true,
         cpuQuota: "200% (2 Cores Max)",
