@@ -158,4 +158,51 @@ describe("Orchestrator REST API (Core HTTP Layer)", () => {
     const getRes = await router(getReq);
     expect(getRes.status).toBe(404);
   });
+
+  it("should return queue metrics via GET /queue/metrics", async () => {
+    const req = new Request("http://localhost:4000/queue/metrics", {
+      method: "GET",
+    });
+    const res = await router(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.status).toBe("success");
+    expect(body.data.backlogCount).toBeDefined();
+    expect(body.data.maxConcurrency).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should handle asynchronous job enqueueing via POST /sessions/:id/messages with async: true", async () => {
+    const createReq = new Request("http://localhost:4000/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Async Queue Test" }),
+    });
+    const createRes = await router(createReq);
+    const { id } = await createRes.json();
+
+    const msgReq = new Request(
+      `http://localhost:4000/sessions/${id}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Async job execution", async: true }),
+      },
+    );
+    const msgRes = await router(msgReq);
+    expect(msgRes.status).toBe(202);
+
+    const body = await msgRes.json();
+    expect(body.status).toBe("queued");
+    expect(body.jobId).toBeDefined();
+    expect(body.sessionId).toBe(id);
+
+    const jobsReq = new Request("http://localhost:4000/queue/jobs", {
+      method: "GET",
+    });
+    const jobsRes = await router(jobsReq);
+    expect(jobsRes.status).toBe(200);
+    const jobsBody = await jobsRes.json();
+    expect(Array.isArray(jobsBody.data)).toBe(true);
+  });
 });

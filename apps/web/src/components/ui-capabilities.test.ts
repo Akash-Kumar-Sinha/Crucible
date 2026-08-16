@@ -75,6 +75,8 @@ describe("UI Capabilities & Observer/Facade Primitives", () => {
 
     it("should handle Kubernetes scheduling phase states", () => {
       const phases = [
+        "Queued",
+        "ScalingUp",
         "Pending",
         "Running",
         "Succeeded",
@@ -82,6 +84,8 @@ describe("UI Capabilities & Observer/Facade Primitives", () => {
         "OOMKilled",
         "Evicted",
       ];
+      expect(phases).toContain("Queued");
+      expect(phases).toContain("ScalingUp");
       expect(phases).toContain("Pending");
       expect(phases).toContain("OOMKilled");
       expect(phases).toContain("Evicted");

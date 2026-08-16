@@ -285,4 +285,53 @@ describe("SessionManager Multiton Registry", () => {
 
     sess.dispose();
   });
+
+  it("should preserve user prompts alongside assistant responses across restoreState", async () => {
+    const mockProvider = new MockProvider([
+      { content: "Response to question 1", finishReason: "stop" },
+      { content: "Response to question 2", finishReason: "stop" },
+    ]);
+
+    const session = new Session({
+      sessionId: "restore_test_sess",
+      provider: mockProvider,
+    });
+
+    await session.prompt("What is Crucible?");
+    expect(session.getMessages().length).toBe(2);
+    expect(session.getMessages()[0]).toEqual({
+      role: "user",
+      content: "What is Crucible?",
+    });
+    expect(session.getMessages()[1].role).toBe("assistant");
+    expect(session.getMessages()[1].content).toBe("Response to question 1");
+
+    // Simulate restoring state into a newly instantiated session (e.g. on browser reload or server restart)
+    const restoredSession = new Session({
+      sessionId: "restore_test_sess",
+      provider: mockProvider,
+    });
+    restoredSession.restoreState({
+      messages: session.getMessages(),
+      turnCount: 1,
+      status: "done",
+    });
+
+    expect(restoredSession.getMessages().length).toBe(2);
+    expect(restoredSession.getMessages()[0].content).toBe("What is Crucible?");
+    expect(restoredSession.getMessages()[1].content).toBe(
+      "Response to question 1",
+    );
+
+    // Continue the restored session with a second turn
+    await restoredSession.prompt("How does its sandbox work?");
+    expect(restoredSession.getMessages().length).toBe(4);
+    expect(restoredSession.getMessages()[2]).toEqual({
+      role: "user",
+      content: "How does its sandbox work?",
+    });
+    expect(restoredSession.getMessages()[3].content).toBe(
+      "Response to question 2",
+    );
+  });
 });

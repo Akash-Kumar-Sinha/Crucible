@@ -1,6 +1,7 @@
 import { captureClientError } from "../lib/error-reporter";
 import { getOrchestratorUrl } from "../config/orchestrator-url";
 import type { TenantScope } from "../config/tenant-scope";
+export type { TenantScope };
 
 export interface SessionSummary {
   id: string;
@@ -208,11 +209,15 @@ export class OrchestratorClient {
     return this.request<SessionDetail>(`/sessions/${id}`, { timeoutMs: 5_000 });
   }
 
-  async sendMessage(id: string, message: string): Promise<SendMessageResponse> {
+  async sendMessage(
+    id: string,
+    message: string,
+    options: { async?: boolean; timeoutMs?: number } = {},
+  ): Promise<SendMessageResponse> {
     return this.request<SendMessageResponse>(`/sessions/${id}/messages`, {
       method: "POST",
-      timeoutMs: 90_000, // Agent execution turn timeout
-      body: JSON.stringify({ message }),
+      timeoutMs: options.timeoutMs ?? 300_000,
+      body: JSON.stringify({ message, async: options.async }),
     });
   }
 
@@ -285,6 +290,65 @@ export class OrchestratorClient {
       method: "DELETE",
       timeoutMs: 5_000,
     });
+  }
+
+  async getInfraStatus(
+    sessionId?: string,
+    scope?: TenantScope,
+  ): Promise<{
+    status: "success";
+    timestamp: string;
+    sessionId?: string;
+    data: {
+      kubernetes: {
+        clusterConnected: boolean;
+        namespace: string;
+        tenantId: string;
+        activeJobs: number;
+        quota: {
+          cpuLimit: string;
+          memoryLimit: string;
+          maxPods: number;
+          maxJobs: number;
+        };
+        job?: {
+          jobName?: string;
+          podName?: string;
+          phase: string;
+          nodeName?: string;
+          oomKilled?: boolean;
+          evicted?: boolean;
+          startTime?: string;
+          durationMs?: number;
+        };
+      };
+      queue: {
+        jobId?: string;
+        status: "idle" | "queued" | "processing" | "completed" | "dead_letter";
+        position: number;
+        backlogCount: number;
+        activeConsumers: number;
+        maxConcurrency: number;
+        oldestJobAgeMs: number;
+        estimatedWaitMs: number;
+      };
+      tenant: {
+        activeTenantId: string;
+        activeNamespace: string;
+        availableTenants: string[];
+        availableNamespaces: string[];
+      };
+    };
+  }> {
+    const searchParams = new URLSearchParams();
+    if (scope?.tenantId) searchParams.set("tenantId", scope.tenantId);
+    if (scope?.namespace) searchParams.set("namespace", scope.namespace);
+    const query = searchParams.toString();
+    const basePath = sessionId
+      ? `/sessions/${sessionId}/infra-status`
+      : "/infra/status";
+    const path = query ? `${basePath}?${query}` : basePath;
+    return this.request(path, { timeoutMs: 5_000 });
   }
 }
 

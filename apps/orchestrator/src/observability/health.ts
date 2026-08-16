@@ -54,6 +54,13 @@ export interface ReadinessCheckOptions {
     latencyMs: number;
     error?: string;
   }>;
+  checkQueue?: () => Promise<{
+    ok: boolean;
+    latencyMs: number;
+    metrics?: any;
+    message?: string;
+    error?: string;
+  }>;
   timeoutMs?: number;
 }
 
@@ -442,6 +449,44 @@ export async function performReadinessCheck(
     checks["guardrails_policy_engine"] = {
       status: "failed",
       latencyMs: Math.round(performance.now() - tGuard),
+      message: err.message,
+    };
+  }
+
+  // 10. Job Queue & Scheduling Health Check
+  const checkQueueFn =
+    options.checkQueue ||
+    (async () => {
+      const { getGlobalJobScheduler } = await import("../queue");
+      const scheduler = getGlobalJobScheduler();
+      const t0 = performance.now();
+      const metrics = scheduler.getMetrics();
+      const latencyMs = Math.round(performance.now() - t0);
+      const isDegraded =
+        metrics.deadLetterCount > 0 ||
+        metrics.backlogCount >= 20 ||
+        metrics.oldestJobAgeMs >= 30000;
+      return {
+        ok: !isDegraded,
+        latencyMs,
+        metrics,
+        message: `Queue load leveling active (${metrics.activeConsumers}/${metrics.maxConcurrency} consumers, ${metrics.backlogCount} queued, ${metrics.deadLetterCount} DLQ)`,
+      };
+    });
+
+  const tQueue = performance.now();
+  try {
+    const qHealth = await checkQueueFn();
+    checks["job_queue"] = {
+      status: qHealth.ok ? "ok" : "degraded",
+      latencyMs: qHealth.latencyMs ?? Math.round(performance.now() - tQueue),
+      message: qHealth.message || "Job queue active",
+      details: qHealth.metrics,
+    };
+  } catch (err: any) {
+    checks["job_queue"] = {
+      status: "degraded",
+      latencyMs: Math.round(performance.now() - tQueue),
       message: err.message,
     };
   }

@@ -33,6 +33,7 @@ import {
 } from "../persistence";
 import { logger } from "../observability/logger";
 import { GuardrailRouteHandler } from "./routes/guardrails";
+import { InfraStatusRouteHandler } from "./routes/infra-status";
 
 export interface HttpServerOptions {
   port?: number;
@@ -46,6 +47,7 @@ export function createHttpRouter(
 ) {
   const handler = new SessionRouteHandler(sessionManager);
   const guardrailHandler = new GuardrailRouteHandler(sessionManager);
+  const infraStatusHandler = new InfraStatusRouteHandler(sessionManager);
 
   return async (
     req: Request,
@@ -97,10 +99,11 @@ export function createHttpRouter(
       return handleReadyzRequest();
     }
 
-    // General health check (includes streaming metrics)
+    // General health check (includes streaming & queue metrics)
     if (pathname === "/health" || pathname === "/api/health") {
       const liveness = performLivenessCheck();
       const sseMetrics = sseHandler.getMetrics();
+      const queueMetrics = sessionManager.getQueueMetrics();
       return new Response(
         JSON.stringify({
           status: "ok",
@@ -113,6 +116,7 @@ export function createHttpRouter(
             totalSseOpened: sseMetrics.totalSseConnectionsOpened,
             droppedSse: sseMetrics.droppedSseConnections,
           },
+          queue: queueMetrics,
         }),
         {
           status: 200,
@@ -126,6 +130,35 @@ export function createHttpRouter(
 
     // Normalize path to strip leading /api prefix if present
     const normalizedPath = pathname.replace(/^\/api/, "");
+
+    // Route: /infra/status
+    if (
+      normalizedPath === "/infra/status" ||
+      normalizedPath === "/infra/status/"
+    ) {
+      return infraStatusHandler.getInfraStatus(req);
+    }
+
+    // Route: /queue/metrics
+    if (
+      normalizedPath === "/queue/metrics" ||
+      normalizedPath === "/queue/metrics/"
+    ) {
+      return handler.getQueueMetrics();
+    }
+
+    // Route: /queue/jobs
+    if (normalizedPath === "/queue/jobs" || normalizedPath === "/queue/jobs/") {
+      return handler.listQueueJobs(req);
+    }
+
+    // Route: /queue/jobs/:id/retry
+    const retryJobMatch = normalizedPath.match(
+      /^\/queue\/jobs\/([^/]+)\/retry$/,
+    );
+    if (retryJobMatch && method === "POST") {
+      return handler.retryDeadLetterJob(retryJobMatch[1]);
+    }
 
     if (normalizedPath === "/metrics" || normalizedPath === "/metrics/") {
       const targetSessionId = url.searchParams.get("sessionId") || undefined;
@@ -262,6 +295,17 @@ export function createHttpRouter(
       const sessionId = sessionSandboxMatch[1];
       if (method === "GET") {
         return guardrailHandler.getSandboxInfo(sessionId);
+      }
+    }
+
+    // Route: /sessions/:id/infra-status
+    const sessionInfraMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/infra-status$/,
+    );
+    if (sessionInfraMatch) {
+      const sessionId = sessionInfraMatch[1];
+      if (method === "GET") {
+        return infraStatusHandler.getInfraStatus(req, sessionId);
       }
     }
 

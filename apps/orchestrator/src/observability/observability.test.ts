@@ -191,6 +191,74 @@ describe("Observability & Centralized Error Reporter", () => {
     expect(alertReason).toContain("threshold crossed");
   });
 
+  it("should isolate error tracking and alert thresholds per tenant and namespace", async () => {
+    const alerts: string[] = [];
+
+    const tenantReporter = new ErrorReporter({
+      alertThresholds: {
+        maxErrorsPerMinute: 2,
+        maxConsecutiveErrors: 2,
+        cooldownPeriodMs: 0,
+      },
+      onAlert: (alert) => {
+        alerts.push(alert.reason);
+      },
+    });
+
+    // Custom threshold for tenant-beta
+    tenantReporter.setTenantAlertThresholds(
+      { tenantId: "tenant-beta", namespace: "crucible-beta" },
+      { maxErrorsPerMinute: 10, maxConsecutiveErrors: 10 },
+    );
+
+    // Fire 2 errors for noisy tenant-alpha
+    tenantReporter.captureAgentError(new Error("Alpha error 1"), {
+      tenantId: "tenant-alpha",
+      namespace: "crucible-alpha",
+    });
+    tenantReporter.captureAgentError(new Error("Alpha error 2"), {
+      tenantId: "tenant-alpha",
+      namespace: "crucible-alpha",
+    });
+
+    // Fire 1 error for quiet tenant-beta
+    tenantReporter.captureAgentError(new Error("Beta error 1"), {
+      tenantId: "tenant-beta",
+      namespace: "crucible-beta",
+    });
+
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Verify tenant-alpha metrics
+    const alphaMetrics = tenantReporter.getMetrics({
+      tenantId: "tenant-alpha",
+      namespace: "crucible-alpha",
+    });
+    expect(alphaMetrics.totalErrors).toBe(2);
+
+    // Verify tenant-beta metrics
+    const betaMetrics = tenantReporter.getMetrics({
+      tenantId: "tenant-beta",
+      namespace: "crucible-beta",
+    });
+    expect(betaMetrics.totalErrors).toBe(1);
+
+    // Verify quiet tenant-gamma metrics
+    const gammaMetrics = tenantReporter.getMetrics({
+      tenantId: "tenant-gamma",
+      namespace: "crucible-gamma",
+    });
+    expect(gammaMetrics.totalErrors).toBe(0);
+
+    // Verify alerts fired ONLY for tenant-alpha (and not tenant-beta)
+    expect(alerts.length).toBe(1);
+    expect(alerts[0]).toContain("tenant-alpha");
+    expect(alerts[0]).not.toContain("tenant-beta");
+
+    const allTenantMetrics = tenantReporter.listAllTenantMetrics();
+    expect(allTenantMetrics.length).toBe(2);
+  });
+
   it("should capture container-level failure events with container context", () => {
     const errId = reporter.captureContainerFailure({
       containerId: "cnt_abc_123",
@@ -282,6 +350,8 @@ describe("Health Check API Pattern", () => {
     expect(result.body.checks?.["docker_daemon"]).toBeDefined();
     expect(result.body.checks?.["rust_grpc_executor"]).toBeDefined();
     expect(result.body.checks?.["disk_workspace"].status).toBe("ok");
+    expect(result.body.checks?.["job_queue"]).toBeDefined();
+    expect(result.body.checks?.["job_queue"].status).toBe("ok");
   });
 
   it("should probe kubernetes cluster API when configured", async () => {

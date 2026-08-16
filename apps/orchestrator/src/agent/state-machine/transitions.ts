@@ -16,6 +16,12 @@ export function computeNextState(
     return "error";
   }
 
+  if (event.type === "START") {
+    context.messages.push({ role: "user", content: event.prompt });
+    context.error = undefined;
+    return "awaiting_model";
+  }
+
   switch (currentState) {
     case "awaiting_model":
       return handleAwaitingModel(context, event);
@@ -24,17 +30,7 @@ export function computeNextState(
     case "awaiting_human":
       return handleAwaitingHuman(context, event);
     case "done":
-      if (event.type === "START") {
-        context.messages.push({ role: "user", content: event.prompt });
-        return "awaiting_model";
-      }
-      return currentState;
     case "error":
-      if (event.type === "START") {
-        context.messages.push({ role: "user", content: event.prompt });
-        context.error = undefined;
-        return "awaiting_model";
-      }
       return currentState;
   }
 }

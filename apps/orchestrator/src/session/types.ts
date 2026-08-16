@@ -13,12 +13,7 @@ import type { GuardrailChain } from "../guardrails/chain";
 export type SessionId = string;
 
 export type SessionStatus =
-  | "idle"
-  | "queued"
-  | "running"
-  | "awaiting_human"
-  | "done"
-  | "error";
+  "idle" | "queued" | "running" | "awaiting_human" | "done" | "error";
 
 export interface SessionConfig {
   sessionId?: SessionId;
@@ -92,6 +87,8 @@ export interface SessionManagerConfig {
   runRepository?: any;
   redisStore?: any;
   autoPersist?: boolean;
+  jobScheduler?: any;
+  queueConfig?: any;
 }
 
 export interface SessionManagerEvents {

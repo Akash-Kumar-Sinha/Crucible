@@ -116,7 +116,7 @@ export default function WorkspacePage() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-950">
+    <div className="flex h-screen w-screen overflow-hidden bg-zinc-900">
       <SessionSidebar
         sessions={sessions}
         onCreateSession={handleCreateSession}

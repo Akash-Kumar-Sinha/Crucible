@@ -11,6 +11,7 @@ export interface StreamEventMap {
   tool_result: { results: ToolResult[] };
   state_change: { to: string; from: string };
   status_change: { status: string; prev?: string };
+  queued: { jobId?: string; queuePosition?: number; backlogCount?: number };
   message: { message: AgentMessage };
   done: { finalResponse?: string };
   error: { error: unknown };
@@ -91,6 +92,11 @@ export class SessionStreamClient {
       };
 
       es.onerror = () => {
+        // If native EventSource is in CONNECTING state (0), let it auto-reconnect without closing
+        if (es.readyState === 0) {
+          return;
+        }
+
         this.setConnected(false);
         if (!this.manuallyClosed) {
           try {
@@ -114,6 +120,7 @@ export class SessionStreamClient {
         "tool_result",
         "state_change",
         "status_change",
+        "queued",
         "message",
         "done",
         "error",
@@ -122,6 +129,9 @@ export class SessionStreamClient {
 
       for (const eventType of eventTypes) {
         es.addEventListener(eventType, (e: any) => {
+          if (!this.isConnectedState) {
+            this.setConnected(true);
+          }
           if (!e || typeof e.data !== "string" || !e.data.trim()) {
             return;
           }

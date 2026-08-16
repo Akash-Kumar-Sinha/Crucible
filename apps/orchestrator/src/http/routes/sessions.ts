@@ -234,10 +234,38 @@ export class SessionRouteHandler {
 
     try {
       logger.info(
-        { sessionId, messageLength: body.message.length },
-        "Dispatching user prompt to agent loop",
+        {
+          sessionId,
+          messageLength: body.message.length,
+          async: (body as any).async,
+        },
+        "Dispatching user prompt to agent loop via job queue",
       );
-      const result = await session.prompt(body.message);
+
+      if ((body as any).async === true) {
+        const job = await this.sessionManager.enqueueJob({
+          sessionId: session.id,
+          type: "session_run",
+          tenantId: session.getTenantId(),
+          namespace: session.getNamespace(),
+          payload: { prompt: body.message },
+        });
+        session.queue(job.id);
+        return this.jsonResponse(
+          {
+            status: "queued",
+            jobId: job.id,
+            sessionId: session.id,
+            title: session.title || session.id,
+          },
+          202,
+        );
+      }
+
+      const result = await this.sessionManager.dispatch(
+        session.id,
+        body.message,
+      );
       const durationMs = Math.round(performance.now() - t0);
 
       const response: SendMessageResponse = {
@@ -375,5 +403,70 @@ export class SessionRouteHandler {
     const durationMs = Math.round(performance.now() - t0);
     logger.info({ sessionId, durationMs }, "Deleted session successfully");
     return this.jsonResponse({ success: true, id: sessionId }, 200);
+  }
+
+  async getQueueMetrics(): Promise<Response> {
+    try {
+      const metrics = this.sessionManager.getQueueMetrics();
+      return this.jsonResponse({ status: "success", data: metrics }, 200);
+    } catch (err: any) {
+      return this.errorResponse(
+        "QUEUE_METRICS_FAILED",
+        err.message || "Failed to retrieve queue metrics",
+        500,
+      );
+    }
+  }
+
+  async listQueueJobs(req?: Request): Promise<Response> {
+    try {
+      let filter: any = {};
+      if (req) {
+        const url = new URL(req.url);
+        const status = url.searchParams.get("status") || undefined;
+        const sessionId = url.searchParams.get("sessionId") || undefined;
+        const tenantId = url.searchParams.get("tenantId") || undefined;
+        const namespace = url.searchParams.get("namespace") || undefined;
+        const limit = parseInt(url.searchParams.get("limit") || "100", 10);
+        filter = { status, sessionId, tenantId, namespace, limit };
+      }
+      const jobs = await this.sessionManager.getJobScheduler().listJobs(filter);
+      return this.jsonResponse(
+        { status: "success", count: jobs.length, data: jobs },
+        200,
+      );
+    } catch (err: any) {
+      return this.errorResponse(
+        "LIST_QUEUE_JOBS_FAILED",
+        err.message || "Failed to list queue jobs",
+        500,
+      );
+    }
+  }
+
+  async retryDeadLetterJob(jobId: string): Promise<Response> {
+    try {
+      const job = await this.sessionManager
+        .getJobScheduler()
+        .retryDeadLetterJob(jobId);
+      if (!job) {
+        return this.errorResponse(
+          "JOB_NOT_FOUND",
+          `Dead-letter job '${jobId}' was not found in DLQ.`,
+          404,
+          { jobId },
+        );
+      }
+      return this.jsonResponse(
+        { status: "success", message: "Job re-queued successfully", data: job },
+        200,
+      );
+    } catch (err: any) {
+      return this.errorResponse(
+        "RETRY_JOB_FAILED",
+        err.message || "Failed to retry dead-letter job",
+        500,
+      );
+    }
   }
 }

@@ -146,7 +146,10 @@ export class Session extends EventEmitter {
     return this.status;
   }
 
-  queue(): void {
+  queue(jobId?: string): void {
+    if (jobId) {
+      this.metadata.jobId = jobId;
+    }
     this.setStatus("queued");
   }
 

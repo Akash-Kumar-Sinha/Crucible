@@ -143,6 +143,10 @@ export class ErrorReporter extends EventEmitter {
   private serverName: string;
   private maxRecentErrors: number;
   private alertThresholds: AlertThresholds;
+  private readonly tenantThresholdOverrides = new Map<
+    string,
+    AlertThresholds
+  >();
   private onAlert?: AlertHandler;
 
   private readonly globalBucket: ErrorBucket = this.createEmptyBucket();
@@ -159,6 +163,26 @@ export class ErrorReporter extends EventEmitter {
       cooldownPeriodMs: options.alertThresholds?.cooldownPeriodMs ?? 60_000,
     };
     this.onAlert = options.onAlert;
+  }
+
+  setTenantAlertThresholds(
+    scope: { tenantId?: string; namespace?: string },
+    thresholds: AlertThresholds,
+  ): void {
+    const normalized = this.normalizeScope(scope);
+    this.tenantThresholdOverrides.set(normalized.scopeKey, {
+      ...this.alertThresholds,
+      ...thresholds,
+    });
+  }
+
+  listAllTenantMetrics(): TenantErrorMetrics[] {
+    const list: TenantErrorMetrics[] = [];
+    for (const [scopeKey, bucket] of this.tenantBuckets.entries()) {
+      const [tenantId, namespace] = scopeKey.split("::");
+      list.push(this.buildMetrics(bucket, { tenantId, namespace, scopeKey }));
+    }
+    return list;
   }
 
   addBreadcrumb(breadcrumb: Omit<Breadcrumb, "timestamp">): void {
@@ -648,7 +672,9 @@ export class ErrorReporter extends EventEmitter {
     scope: { tenantId: string; namespace: string; scopeKey: string },
   ): Promise<void> {
     const now = Date.now();
-    const cooldown = this.alertThresholds.cooldownPeriodMs ?? 60_000;
+    const effectiveThresholds =
+      this.tenantThresholdOverrides.get(scope.scopeKey) || this.alertThresholds;
+    const cooldown = effectiveThresholds.cooldownPeriodMs ?? 60_000;
     const scoped = this.getScopeBucket(scope);
     if (now - scoped.bucket.lastAlertTimestamp < cooldown) {
       return;
@@ -658,8 +684,8 @@ export class ErrorReporter extends EventEmitter {
       tenantId: scope.tenantId,
       namespace: scope.namespace,
     });
-    const maxPerMin = this.alertThresholds.maxErrorsPerMinute ?? 5;
-    const maxConsecutive = this.alertThresholds.maxConsecutiveErrors ?? 3;
+    const maxPerMin = effectiveThresholds.maxErrorsPerMinute ?? 5;
+    const maxConsecutive = effectiveThresholds.maxConsecutiveErrors ?? 3;
 
     let triggerReason: string | null = null;
     if (metrics.errorsInLastMinute >= maxPerMin) {

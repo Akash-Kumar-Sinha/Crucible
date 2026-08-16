@@ -7,19 +7,10 @@ import type {
 } from "../api/orchestrator-client";
 
 export type AgentState =
-  | "awaiting_model"
-  | "awaiting_tool"
-  | "awaiting_human"
-  | "done"
-  | "error";
+  "awaiting_model" | "awaiting_tool" | "awaiting_human" | "done" | "error";
 
 export type SessionStatus =
-  | "idle"
-  | "queued"
-  | "running"
-  | "done"
-  | "error"
-  | "awaiting_human";
+  "idle" | "queued" | "running" | "done" | "error" | "awaiting_human";
 
 export interface SessionStoreState {
   currentSessionId: string | null;

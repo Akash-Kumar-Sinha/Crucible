@@ -94,15 +94,9 @@ export class AgentLoop {
   }
 
   async run(prompt: string): Promise<AgentLoopResult> {
-    const currentState = this.stateMachine.getState();
-
     // Ingest prompt into state machine
-    if (
-      this.stateMachine.getContext().messages.length === 0 ||
-      currentState === "done" ||
-      currentState === "error"
-    ) {
-      this.stateMachine.send({ type: "START", prompt });
+    if (prompt && prompt.trim().length > 0) {
+      this.stateMachine.send({ type: "START", prompt: prompt.trim() });
     }
 
     // Attach step notification listener if configured and not already attached

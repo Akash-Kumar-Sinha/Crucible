@@ -22,7 +22,6 @@ const roundnessClass = "rounded-lg";
 
 const button_theme = "bg-zinc-900 hover:bg-zinc-800";
 
-// Cold neutral-500 accent - reads technical/precise, tuned for an AI/dev-tool feel.
 const container_theme = cn(
   "bg-zinc-950",
   "shadow-[0_0_80px_rgba(255,255,255,0.12)]",
@@ -130,12 +129,12 @@ export function PromptInput({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="flex items-center justify-center gap-[5px] w-8 h-8 sm:w-9 sm:h-9"
+                className="flex items-center justify-center gap-1.25 w-8 h-8 sm:w-9 sm:h-9"
               >
                 {[0, 1, 2].map((i) => (
                   <motion.span
                     key={i}
-                    className="block w-[5px] h-[5px] rounded-full bg-neutral-500/70"
+                    className="block w-1.25 h-1.25 rounded-full bg-neutral-500/70"
                     animate={{
                       opacity: [0.25, 1, 0.25],
                       scale: [0.85, 1, 0.85],
@@ -171,7 +170,7 @@ export function PromptInput({
                   !canSubmit && "cursor-not-allowed",
                 )}
               >
-                <ChevronUp className={cn("w-4 h-4 sm:w-[18px] sm:h-[18px]")} />
+                <ChevronUp className={cn("w-4 h-4 sm:w-4.5 sm:h-4.5")} />
               </motion.button>
             )}
           </AnimatePresence>

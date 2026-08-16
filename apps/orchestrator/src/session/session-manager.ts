@@ -14,6 +14,13 @@ import { RunRepository } from "../persistence/postgres/run-repository";
 import { RedisSessionStore } from "../persistence/redis/session-store";
 import { logger } from "../observability/logger";
 import { getErrorReporter } from "../observability/error-reporter";
+import {
+  JobScheduler,
+  type EnqueueJobOptions,
+  type Job,
+  type JobPriority,
+  type QueueMetrics,
+} from "../queue";
 
 export class SessionManager extends EventEmitter {
   private sessions = new Map<SessionId, Session>();
@@ -23,13 +30,7 @@ export class SessionManager extends EventEmitter {
   private redisStore?: RedisSessionStore;
   private autoPersist: boolean;
   private readonly maxConcurrentExecutions: number;
-  private activeExecutionCount = 0;
-  private readonly pendingExecutionQueue: Array<{
-    sessionId: SessionId;
-    prompt: string;
-    resolve: (result: AgentLoopResult) => void;
-    reject: (err: unknown) => void;
-  }> = [];
+  private jobScheduler: JobScheduler;
 
   constructor(config: SessionManagerConfig = {}) {
     super();
@@ -49,7 +50,40 @@ export class SessionManager extends EventEmitter {
     this.autoPersist = config.autoPersist ?? true;
     this.maxConcurrentExecutions =
       config.maxConcurrentExecutions ||
-      Number(process.env.CRUCIBLE_MAX_CONCURRENT_EXECUTIONS || "1");
+      Number(process.env.CRUCIBLE_MAX_CONCURRENT_EXECUTIONS || "4");
+
+    this.jobScheduler =
+      config.jobScheduler ||
+      new JobScheduler({
+        concurrency: this.maxConcurrentExecutions,
+        ...config.queueConfig,
+      });
+
+    this.jobScheduler.registerHandler("session_run", async (job: Job) => {
+      const session = this.getOrThrow(job.sessionId);
+      const prompt = (job.payload.prompt as string) || "";
+      const result = await session.prompt(prompt);
+      if (this.autoPersist) {
+        await this.persistTurnFromEvent(session, {
+          turnNumber: session.getSummary().turnCount,
+          thought: result.history?.[result.history.length - 1]?.thought,
+          modelOutput: result.finalResponse,
+          history: result.history,
+          error: result.error,
+        });
+      }
+      return result;
+    });
+
+    this.jobScheduler.on("jobDeadLetter", (job: Job, reason: string) => {
+      const session = this.get(job.sessionId);
+      if (session) {
+        session.emit("error", {
+          message: `Job ${job.id} dead-lettered: ${reason}`,
+          details: { jobId: job.id, deadLetterReason: reason },
+        });
+      }
+    });
   }
 
   private createSessionInternal(options: CreateSessionOptions = {}): Session {
@@ -250,6 +284,44 @@ export class SessionManager extends EventEmitter {
       }
     });
 
+    session.on("message", (msg) => {
+      this.emit("sessionMessage", session.id, msg);
+
+      if (this.autoPersist) {
+        if (this.sessionRepository) {
+          this.sessionRepository
+            .updateSession(session.id, {
+              title: session.title,
+              status: session.getStatus(),
+              agentState: session.getState(),
+              metadata: {
+                ...session.metadata,
+                messages: session.getMessages(),
+              },
+            })
+            .catch(() => {});
+        }
+        if (this.redisStore) {
+          this.redisStore
+            .setHotState(session.id, {
+              sessionId: session.id,
+              status: session.getStatus(),
+              agentState: session.getState(),
+              title: session.title || null,
+              modelSlug:
+                (session.getSummary().metadata?.model as string) || "default",
+              turnCount: session.getSummary().turnCount,
+              lastActiveAt: Date.now(),
+              metadata: {
+                ...session.metadata,
+                messages: session.getMessages(),
+              },
+            })
+            .catch(() => {});
+        }
+      }
+    });
+
     session.on("turnCompleted", (turnData: any) => {
       if (this.autoPersist) {
         this.persistTurnFromEvent(session, turnData).catch((err) => {
@@ -272,48 +344,6 @@ export class SessionManager extends EventEmitter {
           .catch(() => {});
       }
     });
-  }
-
-  private releaseExecutionSlot(): void {
-    if (this.activeExecutionCount > 0) {
-      this.activeExecutionCount -= 1;
-    }
-
-    const next = this.pendingExecutionQueue.shift();
-    if (!next) {
-      return;
-    }
-
-    void this.startQueuedExecution(next);
-  }
-
-  private async startQueuedExecution(item: {
-    sessionId: SessionId;
-    prompt: string;
-    resolve: (result: AgentLoopResult) => void;
-    reject: (err: unknown) => void;
-  }): Promise<void> {
-    const session = this.getOrThrow(item.sessionId);
-    session.queue();
-
-    this.activeExecutionCount += 1;
-    try {
-      const result = await session.prompt(item.prompt);
-      if (this.autoPersist) {
-        await this.persistTurnFromEvent(session, {
-          turnNumber: session.getSummary().turnCount,
-          thought: result.history?.[result.history.length - 1]?.thought,
-          modelOutput: result.finalResponse,
-          history: result.history,
-          error: result.error,
-        });
-      }
-      item.resolve(result);
-    } catch (err) {
-      item.reject(err);
-    } finally {
-      this.releaseExecutionSlot();
-    }
   }
 
   /**
@@ -503,6 +533,16 @@ export class SessionManager extends EventEmitter {
         durationMs: turnData.durationMs,
         toolCalls,
       });
+
+      await this.sessionRepository.updateSession(session.id, {
+        title: session.title,
+        status: session.getStatus(),
+        agentState: session.getState(),
+        metadata: {
+          ...session.metadata,
+          messages: session.getMessages(),
+        },
+      });
     }
 
     if (this.runRepository && turnData.turnNumber) {
@@ -524,51 +564,85 @@ export class SessionManager extends EventEmitter {
           (session.getSummary().metadata?.model as string) || "default",
         turnCount: turnData.turnNumber,
         lastActiveAt: Date.now(),
+        metadata: {
+          ...session.metadata,
+          messages: session.getMessages(),
+        },
       });
     }
   }
 
-  async dispatch(id: SessionId, prompt: string): Promise<AgentLoopResult> {
+  async dispatch(
+    id: SessionId,
+    prompt: string,
+    options: {
+      priority?: number | JobPriority;
+      maxRetries?: number;
+      metadata?: Record<string, unknown>;
+    } = {},
+  ): Promise<AgentLoopResult> {
     const session = this.getOrThrow(id);
-
-    if (this.activeExecutionCount < this.maxConcurrentExecutions) {
-      this.activeExecutionCount += 1;
-      try {
-        const result = await session.prompt(prompt);
-        if (this.autoPersist) {
-          await this.persistTurnFromEvent(session, {
-            turnNumber: session.getSummary().turnCount,
-            thought: result.history?.[result.history.length - 1]?.thought,
-            modelOutput: result.finalResponse,
-            history: result.history,
-            error: result.error,
-          });
-        }
-        return result;
-      } finally {
-        this.releaseExecutionSlot();
-      }
-    }
-
     session.queue();
 
     return new Promise<AgentLoopResult>((resolve, reject) => {
-      this.pendingExecutionQueue.push({
-        sessionId: id,
-        prompt,
-        resolve,
-        reject,
-      });
-      this.emit("sessionQueued", session.getSummary());
-      logger.info(
-        {
+      this.jobScheduler
+        .enqueue({
           sessionId: id,
-          queueDepth: this.pendingExecutionQueue.length,
-          activeExecutionCount: this.activeExecutionCount,
-          maxConcurrentExecutions: this.maxConcurrentExecutions,
-        },
-        "Queued session execution request",
-      );
+          type: "session_run",
+          tenantId: session.getTenantId(),
+          namespace: session.getNamespace(),
+          payload: { prompt, ...options.metadata },
+          priority: options.priority ?? "normal",
+          maxRetries: options.maxRetries,
+        })
+        .then((job) => {
+          session.queue(job.id);
+          this.emit("sessionQueued", {
+            ...session.getSummary(),
+            metadata: { ...session.metadata, jobId: job.id },
+          });
+
+          const onCompleted = (completedJob: Job) => {
+            if (completedJob.id === job.id) {
+              cleanup();
+              resolve(completedJob.result as AgentLoopResult);
+            }
+          };
+
+          const onDeadLetter = (dlqJob: Job, reason: string) => {
+            if (dlqJob.id === job.id) {
+              cleanup();
+              reject(
+                new Error(
+                  `Job failed and entered dead letter queue: ${reason}`,
+                ),
+              );
+            }
+          };
+
+          const cleanup = () => {
+            this.jobScheduler.off("jobCompleted", onCompleted);
+            this.jobScheduler.off("jobDeadLetter", onDeadLetter);
+          };
+
+          this.jobScheduler.on("jobCompleted", onCompleted);
+          this.jobScheduler.on("jobDeadLetter", onDeadLetter);
+        })
+        .catch(reject);
     });
+  }
+
+  getJobScheduler(): JobScheduler {
+    return this.jobScheduler;
+  }
+
+  getQueueMetrics(): QueueMetrics {
+    return this.jobScheduler.getMetrics();
+  }
+
+  async enqueueJob<T = any, R = unknown>(
+    options: EnqueueJobOptions<T>,
+  ): Promise<Job<T, R>> {
+    return this.jobScheduler.enqueue<T, R>(options);
   }
 }

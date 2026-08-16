@@ -119,7 +119,7 @@ export class SseStreamHandler {
           encoder.encode(this.formatSseEvent("connected", initialPayload)),
         );
 
-        // Heartbeat interval (every 15s) to maintain half-open socket detection
+        // Heartbeat interval (every 5s) to maintain active persistent stream and prevent idle drops
         heartbeatInterval = setInterval(() => {
           if (!isClosed) {
             try {
@@ -137,7 +137,7 @@ export class SseStreamHandler {
               cleanup(true);
             }
           }
-        }, 15000);
+        }, 5000);
       },
       cancel: () => {
         cleanup(false);
