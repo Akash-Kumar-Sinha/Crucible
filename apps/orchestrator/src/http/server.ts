@@ -34,6 +34,12 @@ import {
 import { logger } from "../observability/logger";
 import { GuardrailRouteHandler } from "./routes/guardrails";
 import { InfraStatusRouteHandler } from "./routes/infra-status";
+import { ModelsRouteHandler } from "./routes/models";
+import { RolesRouteHandler } from "./routes/roles";
+import { InterSessionRouteHandler } from "./routes/inter-session";
+import { SquadsRouteHandler } from "./routes/squads";
+import { AuditRouteHandler } from "./routes/audit";
+import { PreviewProxyHandler } from "../preview/preview-proxy";
 
 export interface HttpServerOptions {
   port?: number;
@@ -48,6 +54,12 @@ export function createHttpRouter(
   const handler = new SessionRouteHandler(sessionManager);
   const guardrailHandler = new GuardrailRouteHandler(sessionManager);
   const infraStatusHandler = new InfraStatusRouteHandler(sessionManager);
+  const modelsHandler = new ModelsRouteHandler();
+  const rolesHandler = new RolesRouteHandler();
+  const interSessionHandler = new InterSessionRouteHandler();
+  const squadsHandler = new SquadsRouteHandler(sessionManager);
+  const auditHandler = new AuditRouteHandler();
+  const previewProxyHandler = new PreviewProxyHandler();
 
   return async (
     req: Request,
@@ -130,6 +142,51 @@ export function createHttpRouter(
 
     // Normalize path to strip leading /api prefix if present
     const normalizedPath = pathname.replace(/^\/api/, "");
+
+    // Route: /models
+    if (normalizedPath === "/models" || normalizedPath === "/models/") {
+      return modelsHandler.listModels();
+    }
+
+    // Route: /roles
+    if (normalizedPath === "/roles" || normalizedPath === "/roles/") {
+      return rolesHandler.listRoles();
+    }
+
+    // Route: /roles/:id
+    const roleMatch = normalizedPath.match(/^\/roles\/([^/]+)$/);
+    if (roleMatch && method === "GET") {
+      return rolesHandler.getRole(roleMatch[1]);
+    }
+
+    // Route: /inter-session/messages
+    if (
+      normalizedPath === "/inter-session/messages" ||
+      normalizedPath === "/inter-session/messages/" ||
+      normalizedPath === "/session-bus/messages" ||
+      normalizedPath === "/session-bus/messages/"
+    ) {
+      if (method === "POST") {
+        return interSessionHandler.publishMessage(req);
+      }
+      return interSessionHandler.getMessages(url);
+    }
+
+    // Route: /squads
+    if (normalizedPath.startsWith("/squads")) {
+      return squadsHandler.handle(req);
+    }
+
+    // Route: /audit
+    if (
+      normalizedPath === "/audit/verify" ||
+      normalizedPath === "/audit/verify/"
+    ) {
+      return auditHandler.handleVerifyIntegrity();
+    }
+    if (normalizedPath.startsWith("/audit")) {
+      return auditHandler.handleGetRecords(req);
+    }
 
     // Route: /infra/status
     if (
@@ -276,6 +333,17 @@ export function createHttpRouter(
       }
     }
 
+    // Route: /sessions/:id/inter-session-messages or /sessions/:id/messages/inter-session
+    const interSessionMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/(?:messages\/inter-session|inter-session-messages)$/,
+    );
+    if (interSessionMatch) {
+      const sessionId = interSessionMatch[1];
+      if (method === "POST") {
+        return handler.sendInterSessionMessage(sessionId, req);
+      }
+    }
+
     // Route: /sessions/:id/approval and /sessions/:id/guardrails/approval
     const approvalMatch = normalizedPath.match(
       /^\/sessions\/([^/]+)\/(?:guardrails\/)?approval$/,
@@ -296,6 +364,42 @@ export function createHttpRouter(
       if (method === "GET") {
         return guardrailHandler.getSandboxInfo(sessionId);
       }
+    }
+
+    // Route: /sessions/:id/preview
+    const sessionPreviewMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/preview$/,
+    );
+    if (sessionPreviewMatch) {
+      const sessionId = sessionPreviewMatch[1];
+      if (method === "GET") {
+        return previewProxyHandler.handleGetStatus(sessionId);
+      }
+      if (method === "POST") {
+        return previewProxyHandler.handleStart(req, sessionId);
+      }
+      if (method === "DELETE") {
+        return previewProxyHandler.handleStop(sessionId);
+      }
+    }
+
+    // Route: /preview/:sessionId/*
+    const previewProxyMatch = normalizedPath.match(
+      /^\/preview\/([^/]+)(?:\/(.*))?$/,
+    );
+    if (previewProxyMatch) {
+      const sessionId = previewProxyMatch[1];
+      const subpath = previewProxyMatch[2] || "";
+      if (subpath === "status" && method === "GET") {
+        return previewProxyHandler.handleGetStatus(sessionId);
+      }
+      if (subpath === "start" && method === "POST") {
+        return previewProxyHandler.handleStart(req, sessionId);
+      }
+      if (subpath === "stop" && method === "POST") {
+        return previewProxyHandler.handleStop(sessionId);
+      }
+      return previewProxyHandler.handleProxyRequest(req, sessionId, subpath);
     }
 
     // Route: /sessions/:id/infra-status

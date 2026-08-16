@@ -38,7 +38,7 @@ const demos: DemoSuiteItem[] = [
     args: ["apps/orchestrator/src/demo/verify-guardrails.ts"],
   },
   {
-    name: "UI Integration: Sandbox & Guardrail Visibility (Approve/Deny & Resource Budgets)",
+    name: "UI Integration: Sandbox & Guardrail Visibility",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-ui-visibility.ts"],
   },
@@ -46,6 +46,48 @@ const demos: DemoSuiteItem[] = [
     name: "Kubernetes Job Sandbox Execution & Restricted PodSecurity",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-k8s-jobs.ts"],
+  },
+  {
+    name: "Kubernetes Job Phases, Queue Load Leveling & Context Compaction",
+    command: "bun",
+    args: [
+      "apps/orchestrator/src/demo/verify-k8s-jobs-and-context-management.ts",
+    ],
+  },
+  {
+    name: "Cross-Session Bus & Synthetic Observation Ingestion",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-cross-session-communication.ts"],
+  },
+  {
+    name: "Per-Session Model Selection & Dispatch Tagging",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-per-session-model-selection.ts"],
+  },
+  {
+    name: "Agent Roles & Guardrail Security Enforcement",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-agent-roles-and-guardrails.ts"],
+  },
+  {
+    name: "Multi-Agent Squad 4-Stage Pipeline & Stall Timeout Alert",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-squad-stages-and-timeout.ts"],
+  },
+  {
+    name: "Bug Hunter Air-Gapped Egress & Cryptographic Audit Trail",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-bug-hunter-network-and-audit.ts"],
+  },
+  {
+    name: "Metrics Dashboard Multi-Role Real-Number Emission",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-dashboard-real-numbers.ts"],
+  },
+  {
+    name: "Bug Hunter Audit Log Viewer & Hash Chain Sync",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-audit-log-viewer-sync.ts"],
   },
   {
     name: "Rust Sandboxed Process Execution & Isolation Engine",

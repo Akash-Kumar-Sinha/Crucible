@@ -8,6 +8,7 @@ export interface ModelRequest {
   messages: AgentMessage[];
   tools?: ToolDefinition[];
   model?: string;
+  sessionId?: string;
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;

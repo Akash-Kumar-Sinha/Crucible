@@ -37,9 +37,12 @@ describe("Session Actor", () => {
 
     expect(session.id).toBe("custom_session_1");
     expect(session.title).toBe("Test Session");
-    expect(session.getStatus()).toBe("idle");
-    expect(session.getMessages().length).toBe(0);
+    expect(session.getModel()).toBe("openrouter/free");
+    expect(session.getRole()).toBe("general");
     expect(session.getMetadata().customMetadata).toEqual({
+      role: "general",
+      readOnly: false,
+      model: "openrouter/free",
       tenantId: "default",
       namespace: "crucible",
       userId: "user_123",

@@ -184,6 +184,8 @@ export class SseStreamHandler {
       sendEvent("tool_stdout", data);
     const onToolStderr = (data: { toolCallId: string; chunk: string }) =>
       sendEvent("tool_stderr", data);
+    const onInterSessionMessage = (msg: any) =>
+      sendEvent("inter_session_message", { message: msg });
     const onDone = (finalResponse: string) =>
       sendEvent("done", { finalResponse });
     const onError = (error: unknown) => {
@@ -205,6 +207,7 @@ export class SseStreamHandler {
     session.on("statusChange", onStatusChange);
     session.on("titleChange", onTitleChange);
     session.on("message", onMessage);
+    session.on("interSessionMessage", onInterSessionMessage);
     session.on("token", onToken);
     session.on("toolStdout", onToolStdout);
     session.on("toolStderr", onToolStderr);
@@ -227,6 +230,7 @@ export class SseStreamHandler {
       session.off("statusChange", onStatusChange);
       session.off("titleChange", onTitleChange);
       session.off("message", onMessage);
+      session.off("interSessionMessage", onInterSessionMessage);
       session.off("token", onToken);
       session.off("toolStdout", onToolStdout);
       session.off("toolStderr", onToolStderr);

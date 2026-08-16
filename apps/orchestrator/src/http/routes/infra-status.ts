@@ -152,7 +152,7 @@ export class InfraStatusRouteHandler {
     }
 
     // Kubernetes Workload Metadata (Facade over Kubernetes Job / Pod APIs)
-    const isK8s = Boolean(this.executor && this.executor.name.includes("k8s"));
+    const _isK8s = Boolean(this.executor && this.executor.name.includes("k8s"));
     let k8sJobPhase = "Running";
     if (jobStatus === "queued") {
       k8sJobPhase = "Queued";

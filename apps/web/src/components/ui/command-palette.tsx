@@ -8,7 +8,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 const roundnessClass = "rounded-lg";
-const rowRoundnessClass = "rounded-xl";
+const rowRoundnessClass = "rounded-lg";
 const kbdRoundnessClass = "rounded-lg";
 
 export interface Command {
@@ -19,6 +19,8 @@ export interface Command {
   icon?: React.ReactNode;
   onSelect: () => void;
 }
+
+export type CommandItem = Command;
 
 function useCommandPalette() {
   const [open, setOpen] = useState(false);

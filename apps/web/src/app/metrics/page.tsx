@@ -16,8 +16,24 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { LatencyChart, type SpanMetric } from "@/components/LatencyChart";
-import { ErrorRatePanel } from "@/components/ErrorRatePanel";
+import {
+  LatencyChart,
+  type SpanMetric,
+} from "@/components/metrics/LatencyChart";
+import { ErrorRatePanel } from "@/components/metrics/ErrorRatePanel";
+import {
+  TokenUsagePanel,
+  type TokenUsageMetric,
+} from "@/components/metrics/TokenUsagePanel";
+import {
+  ModelUsagePanel,
+  type ModelUsageMetric,
+} from "@/components/metrics/ModelUsagePanel";
+import {
+  RoleActivityPanel,
+  type RoleActivityMetric,
+  type CrossSessionMetrics,
+} from "@/components/metrics/RoleActivityPanel";
 import { Logo, CrucibleWordmark } from "@/components/Logo";
 import {
   Card,
@@ -58,6 +74,19 @@ interface SystemMetrics {
     }
   >;
   recentTraces: SpanMetric[];
+  tokenMetrics?: {
+    totalTokensConsumed: number;
+    perSessionTokens: TokenUsageMetric[];
+    summarizedSessionsCount: number;
+  };
+  modelMetrics?: {
+    totalRequests: number;
+    models: Record<string, ModelUsageMetric>;
+  };
+  roleMetrics?: {
+    roles: Record<string, RoleActivityMetric>;
+  };
+  crossSessionMetrics?: CrossSessionMetrics;
 }
 
 export default function MetricsDashboardPage() {
@@ -192,8 +221,8 @@ export default function MetricsDashboardPage() {
             href="/"
             className="flex items-center gap-3 text-sm font-semibold text-zinc-200 transition-colors hover:text-white group"
           >
-            <Logo className="w-7 h-7 text-primary transition-transform group-hover:scale-105" />
-            <CrucibleWordmark className="text-2xl text-white group-hover:text-primary transition-colors leading-none" />
+            <Logo className="w-7 h-7 text-white transition-transform group-hover:scale-105" />
+            <CrucibleWordmark className="text-2xl text-white transition-colors leading-none" />
             <span className="text-zinc-700 font-light hidden sm:inline">/</span>
             <span className="text-xs uppercase tracking-wider text-zinc-400 font-medium hidden sm:inline">
               Telemetry & Traces
@@ -202,20 +231,20 @@ export default function MetricsDashboardPage() {
 
           <div
             className={cn(
-              "hidden md:inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              "hidden md:inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-xs font-medium transition-colors font-mono",
               isConnected
-                ? "border-primary/20 bg-primary/10 text-primary"
+                ? "border-emerald-500/20 bg-emerald-950/20 text-emerald-300"
                 : "border-zinc-800 bg-zinc-900 text-zinc-500",
             )}
           >
             <span className="relative flex h-2 w-2">
               {isConnected && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               )}
               <span
                 className={cn(
                   "relative inline-flex h-2 w-2 rounded-full",
-                  isConnected ? "bg-primary" : "bg-zinc-600",
+                  isConnected ? "bg-emerald-400" : "bg-zinc-600",
                 )}
               />
             </span>
@@ -224,7 +253,7 @@ export default function MetricsDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-1.5 backdrop-blur-md hover:border-white/20 transition-all text-xs">
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-900/60 px-3 py-1.5 backdrop-blur-md hover:border-white/20 transition-all text-xs font-mono">
             <Filter size={13} className="text-zinc-400" />
             <span className="text-zinc-500 hidden md:inline">Scope:</span>
             <select
@@ -278,10 +307,10 @@ export default function MetricsDashboardPage() {
           >
             <div className="flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
-                <div className="p-2 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                <div className="p-2 rounded-lg bg-zinc-800/80 border border-white/10 text-zinc-200">
                   <Activity size={18} />
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-primary font-semibold px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                <span className="text-[10px] uppercase tracking-wider text-zinc-300 font-semibold px-2 py-0.5 rounded-lg bg-zinc-800/60 border border-white/8 font-mono">
                   Live Concurrency
                 </span>
               </div>
@@ -302,10 +331,10 @@ export default function MetricsDashboardPage() {
           >
             <div className="flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
-                <div className="p-2 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                <div className="p-2 rounded-lg bg-zinc-800/80 border border-white/10 text-zinc-200">
                   <Clock size={18} />
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-primary font-semibold px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                <span className="text-[10px] uppercase tracking-wider text-zinc-300 font-semibold px-2 py-0.5 rounded-lg bg-zinc-800/60 border border-white/8 font-mono">
                   Mean Duration
                 </span>
               </div>
@@ -313,7 +342,9 @@ export default function MetricsDashboardPage() {
                 <div className="font-mono text-3xl font-bold tracking-tight text-white">
                   {activeMetrics?.meanLatencyMs ?? 0}
                 </div>
-                <span className="text-sm font-medium text-zinc-500">ms</span>
+                <span className="text-sm font-medium text-zinc-500 font-mono">
+                  ms
+                </span>
               </div>
             </div>
           </ProximityGlowCard>
@@ -327,18 +358,20 @@ export default function MetricsDashboardPage() {
           >
             <div className="flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
-                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                <div className="p-2 rounded-lg bg-zinc-800/80 border border-white/10 text-zinc-200">
                   <Zap size={18} />
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                <span className="text-[10px] uppercase tracking-wider text-zinc-300 font-semibold px-2 py-0.5 rounded-lg bg-zinc-800/60 border border-white/8 font-mono">
                   Tail Threshold
                 </span>
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <div className="font-mono text-3xl font-bold tracking-tight text-amber-300">
+                <div className="font-mono text-3xl font-bold tracking-tight text-zinc-100">
                   {activeMetrics?.p95LatencyMs ?? 0}
                 </div>
-                <span className="text-sm font-medium text-zinc-500">ms</span>
+                <span className="text-sm font-medium text-zinc-500 font-mono">
+                  ms
+                </span>
               </div>
             </div>
           </ProximityGlowCard>
@@ -353,18 +386,18 @@ export default function MetricsDashboardPage() {
             <div className="flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
                 <div
-                  className={`p-2 rounded-xl border ${
+                  className={`p-2 rounded-lg border ${
                     (activeMetrics?.toolErrorRate ?? 0) === 0
-                      ? "bg-primary/10 border-primary/20 text-primary"
+                      ? "bg-zinc-800/80 border-white/10 text-zinc-200"
                       : "bg-rose-500/10 border-rose-500/20 text-rose-400"
                   }`}
                 >
                   <Shield size={18} />
                 </div>
                 <span
-                  className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${
+                  className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-lg border font-mono ${
                     (activeMetrics?.toolErrorRate ?? 0) === 0
-                      ? "bg-primary/10 border-primary/20 text-primary"
+                      ? "bg-zinc-800/60 border-white/8 text-zinc-300"
                       : "bg-rose-500/10 border-rose-500/20 text-rose-400"
                   }`}
                 >
@@ -375,7 +408,7 @@ export default function MetricsDashboardPage() {
                 <div
                   className={`font-mono text-3xl font-bold tracking-tight ${
                     (activeMetrics?.toolErrorRate ?? 0) === 0
-                      ? "text-primary"
+                      ? "text-white"
                       : "text-rose-400"
                   }`}
                 >
@@ -385,6 +418,28 @@ export default function MetricsDashboardPage() {
             </div>
           </ProximityGlowCard>
         </div>
+
+        {/* Subsystem Metrics Grid: Context, Models & Roles */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <TokenUsagePanel
+            tokenMetrics={metrics?.tokenMetrics}
+            activeSessionCount={
+              Object.keys(metrics?.sessionMetrics ?? {}).length
+            }
+          />
+
+          <ModelUsagePanel
+            modelMetrics={metrics?.modelMetrics}
+            totalSpansRecorded={metrics?.totalSpansRecorded ?? 0}
+          />
+        </div>
+
+        {/* Agent Roles & Cross-Session Traffic */}
+        <RoleActivityPanel
+          roleMetrics={metrics?.roleMetrics}
+          crossSessionMetrics={metrics?.crossSessionMetrics}
+          totalSpansRecorded={metrics?.totalSpansRecorded ?? 0}
+        />
 
         {/* Charts & Distribution Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -413,7 +468,7 @@ export default function MetricsDashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between border-b border-white/8 pb-4">
             <div>
               <div className="flex items-center gap-2">
-                <Layers size={16} className="text-primary" />
+                <Layers size={16} className="text-zinc-400" />
                 <CardTitle className="text-base font-semibold text-white">
                   Distributed Trace Explorer
                 </CardTitle>
@@ -424,7 +479,7 @@ export default function MetricsDashboardPage() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-white/10 text-zinc-300">
+              <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-white/10 text-zinc-300 font-mono">
                 {activeMetrics?.spans.length ?? 0} spans recorded
               </span>
             </div>
@@ -433,7 +488,7 @@ export default function MetricsDashboardPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-white/8 text-zinc-400 font-medium bg-zinc-950/60">
+                <thead className="border-b border-white/8 text-zinc-400 font-medium bg-zinc-950/60 font-mono">
                   <tr>
                     <th className="py-3 px-4">Operation / Span Name</th>
                     <th className="py-3 px-4">Session Scope</th>
@@ -443,12 +498,12 @@ export default function MetricsDashboardPage() {
                     <th className="py-3 px-4 text-right">Inspect</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 ">
+                <tbody className="divide-y divide-white/5 font-mono">
                   {(activeMetrics?.spans ?? []).length === 0 ? (
                     <tr>
                       <td
                         colSpan={6}
-                        className="py-12 text-center text-zinc-500"
+                        className="py-12 text-center text-zinc-500 font-mono"
                       >
                         <Terminal
                           size={24}
@@ -474,7 +529,7 @@ export default function MetricsDashboardPage() {
                                 <div className="flex items-center gap-2">
                                   <span
                                     className={`h-2 w-2 rounded-full shrink-0 ${
-                                      isError ? "bg-rose-500" : "bg-primary"
+                                      isError ? "bg-rose-500" : "bg-emerald-400"
                                     }`}
                                   />
                                   <span className="truncate max-w-xs">
@@ -483,13 +538,13 @@ export default function MetricsDashboardPage() {
                                 </div>
                               </td>
                               <td className="py-3 px-4 text-zinc-400">
-                                <span className="px-2 py-0.5 rounded bg-zinc-800/60 border border-white/5">
+                                <span className="px-2 py-0.5 rounded-md bg-zinc-800/60 border border-white/5">
                                   {sessId}
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-zinc-300">
                                 {span.durationMs !== undefined ? (
-                                  <span className="font-semibold text-primary">
+                                  <span className="font-semibold text-zinc-100">
                                     {span.durationMs}ms
                                   </span>
                                 ) : (
@@ -503,7 +558,7 @@ export default function MetricsDashboardPage() {
                                   className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold border ${
                                     isError
                                       ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                                      : "bg-primary/10 text-primary border-primary/30"
+                                      : "bg-zinc-800 text-zinc-300 border-white/10"
                                   }`}
                                 >
                                   {span.status}
@@ -517,13 +572,13 @@ export default function MetricsDashboardPage() {
                                   <button
                                     type="button"
                                     onClick={() => handleCopyTrace(span.id)}
-                                    className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+                                    className="p-1 rounded-md hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
                                     title="Copy span ID"
                                   >
                                     {copiedTraceId === span.id ? (
                                       <Check
                                         size={12}
-                                        className="text-primary"
+                                        className="text-emerald-400"
                                       />
                                     ) : (
                                       <Copy size={12} />
@@ -562,7 +617,7 @@ export default function MetricsDashboardPage() {
                                     <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
                                       <Terminal
                                         size={14}
-                                        className="text-primary"
+                                        className="text-zinc-400"
                                       />
                                       <span>
                                         W3C TraceContext Payload & OpenTelemetry
@@ -582,7 +637,7 @@ export default function MetricsDashboardPage() {
                                       <span>Copy JSON</span>
                                     </button>
                                   </div>
-                                  <pre className="rounded-xl bg-zinc-900 border border-white/10 p-4 text-[11px] leading-relaxed text-zinc-300 overflow-x-auto">
+                                  <pre className="rounded-lg bg-zinc-900 border border-white/10 p-4 text-[11px] leading-relaxed text-zinc-300 overflow-x-auto font-mono">
                                     {JSON.stringify(
                                       {
                                         id: span.id,

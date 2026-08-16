@@ -4,6 +4,7 @@ import type { ToolRegistry } from "../tools/registry";
 import type { AgentStateMachine } from "./state-machine";
 import { tracer } from "../observability/otel";
 import { GuardrailChain, getDefaultGuardrailChain } from "../guardrails";
+import { ContextWindowManager, type ContextWindowMetadata } from "../context";
 
 export async function stepAwaitingModel(
   stateMachine: AgentStateMachine,
@@ -13,12 +14,16 @@ export async function stepAwaitingModel(
     model?: string;
     temperature?: number;
     guardrails?: GuardrailChain;
+    contextWindowManager?: ContextWindowManager;
     onToken?: (token: string) => void;
     onThought?: (thought: string) => void;
+    onContextUpdate?: (metadata: ContextWindowMetadata) => void;
   } = {},
 ): Promise<void> {
   const ctx = stateMachine.getContext();
   const guardrails = options.guardrails || getDefaultGuardrailChain();
+  const contextManager =
+    options.contextWindowManager || new ContextWindowManager({ provider });
 
   await tracer
     .withSpan(
@@ -32,10 +37,34 @@ export async function stepAwaitingModel(
       },
       async (span) => {
         try {
+          const prepared = await contextManager.prepareMessages(ctx.messages, {
+            model: options.model,
+            systemPrompt: ctx.systemPrompt,
+            tools: tools.getDefinitions(),
+            sessionId: ctx.sessionId,
+          });
+
+          span.setAttribute(
+            "contextTotalTokens",
+            prepared.metadata.totalTokens,
+          );
+          span.setAttribute("contextLimit", prepared.metadata.limit);
+          span.setAttribute(
+            "contextUsagePercent",
+            prepared.metadata.usagePercent,
+          );
+          span.setAttribute(
+            "contextIsSummarized",
+            prepared.metadata.isSummarized,
+          );
+
+          options.onContextUpdate?.(prepared.metadata);
+
           const response = await provider.complete({
-            messages: ctx.messages,
+            messages: prepared.messages,
             tools: tools.getDefinitions(),
             model: options.model,
+            sessionId: ctx.sessionId,
             temperature: options.temperature,
             systemPrompt: ctx.systemPrompt,
             onToken: options.onToken,

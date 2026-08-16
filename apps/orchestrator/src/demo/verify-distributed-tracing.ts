@@ -20,13 +20,13 @@ async function runDistributedTracingVerification() {
   errorReporter.attachToSessionManager(sessionManager);
 
   const provider1 = new MockModelProvider();
-  const session1 = sessionManager.createSession({
+  const session1 = await sessionManager.createSession({
     provider: provider1,
     title: "Session 1 - Math",
   });
 
   const provider2 = new MockModelProvider();
-  const session2 = sessionManager.createSession({
+  const session2 = await sessionManager.createSession({
     provider: provider2,
     title: "Session 2 - Shell",
   });
@@ -45,6 +45,9 @@ async function runDistributedTracingVerification() {
   console.log("Session 1 spans:", s1Spans.length);
   console.log("Session 2 spans:", s2Spans.length);
   console.log("System summary active traces:", summary.activeTraceCount);
+
+  sessionManager.clear();
+  process.exit(0);
 }
 
 runDistributedTracingVerification().catch((err) => {

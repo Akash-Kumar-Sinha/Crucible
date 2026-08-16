@@ -52,4 +52,10 @@ pub enum SandboxError {
 
     #[error("CRITICAL SECURITY INCIDENT: Sandbox network policy enforcement failed: {message}")]
     NetworkSecurityIncident { message: String },
+
+    #[error("Sandbox port forwarding failed for '{sandbox_id}': {reason}")]
+    PortForwardFailed { sandbox_id: String, reason: String },
+
+    #[error("CRITICAL SECURITY INCIDENT: Sandbox isolation boundary violation: {message}")]
+    IsolationViolation { message: String },
 }

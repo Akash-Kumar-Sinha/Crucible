@@ -257,7 +257,9 @@ async function verifyUiSandboxAndGuardrailVisibility() {
       "================================================================================\n",
     );
   } finally {
-    server.stop();
+    sessionManager.clear();
+    server.stop(true);
+    process.exit(0);
   }
 }
 

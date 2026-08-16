@@ -4,10 +4,15 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { orchestratorClient } from "../../api/orchestrator-client";
 import { useSessionStore } from "../../stores/session-store";
-import { SessionSidebar } from "../../components/SessionSidebar";
-import { ChatWindow } from "../../components/ChatWindow";
-import { SetupWizard } from "../../components/SetupWizard";
+import { SessionSidebar } from "@/components/sidebar/SessionSidebar";
+import { ChatWindow } from "@/components/workspace/ChatWindow";
+import { SetupWizard } from "@/components/sidebar/SetupWizard";
 import { readTenantScope } from "../../config/tenant-scope";
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarInset,
+} from "@/components/ui/sidebar";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -43,7 +48,7 @@ export default function WorkspacePage() {
     } finally {
       setLoading(false);
     }
-  }, [router, activeScope, setSessions, setLoading, setError]);
+  }, [activeScope, setSessions, setLoading, setError]);
 
   React.useEffect(() => {
     fetchSessions();
@@ -68,7 +73,7 @@ export default function WorkspacePage() {
         createdAt: created.createdAt,
         updatedAt: created.createdAt,
       });
-      router.push(`/session/${created.id}`);
+      router.push(`/workspace/session/${created.id}`);
     } catch (err: any) {
       setError(
         err?.message ||
@@ -87,7 +92,11 @@ export default function WorkspacePage() {
     }
   };
 
-  const handleSendMessageFromEmpty = async (text: string) => {
+  const handleSendMessageFromEmpty = async (
+    text: string,
+    model?: string,
+    role?: string,
+  ) => {
     try {
       setError(null);
       const title = text.length > 35 ? text.slice(0, 35) + "..." : text;
@@ -95,6 +104,8 @@ export default function WorkspacePage() {
         title,
         undefined,
         activeScope,
+        model,
+        role,
       );
       addSessionToList({
         id: created.id,
@@ -108,7 +119,7 @@ export default function WorkspacePage() {
         updatedAt: created.createdAt,
       });
       router.push(
-        `/session/${created.id}?initialPrompt=${encodeURIComponent(text)}`,
+        `/workspace/session/${created.id}?initialPrompt=${encodeURIComponent(text)}`,
       );
     } catch (err: any) {
       setError(err?.message || "Failed to create session and dispatch prompt.");
@@ -116,29 +127,38 @@ export default function WorkspacePage() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-900">
-      <SessionSidebar
-        sessions={sessions}
-        onCreateSession={handleCreateSession}
-        onDeleteSession={handleDeleteSession}
-        loading={loading}
-        tenantId={activeScope.tenantId}
-        namespace={activeScope.namespace}
-        onScopeChange={setActiveScope}
-      />
-      <ChatWindow
-        session={null}
-        onSendMessage={handleSendMessageFromEmpty}
-        error={error}
-      />
-      <SetupWizard
-        isOpen={showFirstRunWizard}
-        onClose={() => setShowFirstRunWizard(false)}
-        onConfigSaved={({ tenantId, namespace }) =>
-          setActiveScope({ tenantId, namespace })
-        }
-        isFirstRun={true}
-      />
-    </div>
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100">
+        <Sidebar
+          className="border-r border-white/8 bg-zinc-950"
+          collapsible="icon"
+        >
+          <SessionSidebar
+            sessions={sessions}
+            onCreateSession={handleCreateSession}
+            onDeleteSession={handleDeleteSession}
+            loading={loading}
+            tenantId={activeScope.tenantId}
+            namespace={activeScope.namespace}
+            onScopeChange={setActiveScope}
+          />
+        </Sidebar>
+        <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-zinc-950">
+          <ChatWindow
+            session={null}
+            onSendMessage={handleSendMessageFromEmpty}
+            error={error}
+          />
+        </SidebarInset>
+        <SetupWizard
+          isOpen={showFirstRunWizard}
+          onClose={() => setShowFirstRunWizard(false)}
+          onConfigSaved={({ tenantId, namespace }) =>
+            setActiveScope({ tenantId, namespace })
+          }
+          isFirstRun={true}
+        />
+      </div>
+    </SidebarProvider>
   );
 }

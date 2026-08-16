@@ -71,7 +71,7 @@ async function main() {
     );
   });
 
-  session.on("toolStart", (toolCalls: any) => {
+  session.on("toolStart", (_toolCalls: any) => {
     console.log(`[Tool Start] Executing tool on Kubernetes cluster...`);
   });
 

@@ -70,6 +70,11 @@ export class ToolRegistry {
     return this;
   }
 
+  registerRecord(record: RegisteredTool<any, any>): this {
+    this.tools.set(record.name, record);
+    return this;
+  }
+
   get(name: string): RegisteredTool | undefined {
     return this.tools.get(name);
   }

@@ -79,7 +79,22 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       currentSession,
       status: (currentSession?.status as SessionStatus) || "idle",
     }),
-  setSessions: (sessions) => set({ sessions }),
+  setSessions: (sessions) => {
+    const getTime = (val: any): number => {
+      if (!val) return 0;
+      if (typeof val === "number") return val;
+      if (val instanceof Date) return val.getTime();
+      return new Date(val).getTime() || 0;
+    };
+    return set({
+      sessions: [...sessions].sort((a, b) => {
+        const timeA = getTime(a.updatedAt || a.createdAt);
+        const timeB = getTime(b.updatedAt || b.createdAt);
+        if (timeB !== timeA) return timeB - timeA;
+        return b.id.localeCompare(a.id);
+      }),
+    });
+  },
   addSessionToList: (session) =>
     set((prev) => ({
       sessions: [session, ...prev.sessions.filter((s) => s.id !== session.id)],

@@ -10,12 +10,14 @@ import {
 } from "./state-machine";
 import { stepAwaitingModel, stepAwaitingTool } from "./stepper";
 import { GuardrailChain, getDefaultGuardrailChain } from "../guardrails";
+import { ContextWindowManager, type ContextWindowMetadata } from "../context";
 
 export interface AgentLoopOptions {
   sessionId?: string;
   provider?: ModelProvider;
   tools?: ToolRegistry;
   guardrails?: GuardrailChain;
+  contextWindowManager?: ContextWindowManager;
   systemPrompt?: string;
   maxSteps?: number;
   model?: string;
@@ -28,6 +30,7 @@ export interface AgentLoopOptions {
   onThought?: (thought: string) => void;
   onToolStdout?: (data: { toolCallId: string; chunk: string }) => void;
   onToolStderr?: (data: { toolCallId: string; chunk: string }) => void;
+  onContextUpdate?: (metadata: ContextWindowMetadata) => void;
 }
 
 export interface AgentLoopResult {
@@ -42,6 +45,7 @@ export class AgentLoop {
   private provider: ModelProvider;
   private tools: ToolRegistry;
   private guardrails: GuardrailChain;
+  private contextWindowManager: ContextWindowManager;
   private stateMachine: AgentStateMachine;
   private options: AgentLoopOptions;
   private stepListenerAttached = false;
@@ -51,6 +55,9 @@ export class AgentLoop {
     this.provider = options.provider || new OpenRouterProvider();
     this.tools = options.tools || new ToolRegistry();
     this.guardrails = options.guardrails || getDefaultGuardrailChain();
+    this.contextWindowManager =
+      options.contextWindowManager ||
+      new ContextWindowManager({ provider: this.provider });
     this.stateMachine = new AgentStateMachine({
       sessionId: options.sessionId,
       systemPrompt: options.systemPrompt,
@@ -184,8 +191,10 @@ export class AgentLoop {
           model: this.options.model,
           temperature: this.options.temperature,
           guardrails: this.guardrails,
+          contextWindowManager: this.contextWindowManager,
           onToken: this.options.onToken,
           onThought: this.options.onThought,
+          onContextUpdate: this.options.onContextUpdate,
         });
         return this.stateMachine.getState();
 

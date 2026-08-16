@@ -21,7 +21,7 @@ const _sourceSerif = Source_Serif_4({
   weight: "variable",
 });
 
-const roundnessClass = "rounded-md";
+const roundnessClass = "rounded-sm";
 
 interface AccordionContextValue {
   openValue: string | null;

@@ -24,17 +24,17 @@ async function verifyConcurrentSessions() {
   });
 
   // 1. Create 3 distinct sessions
-  const sessionAlpha = manager.createSession({
+  const sessionAlpha = await manager.createSession({
     sessionId: "session_alpha",
     title: "Math Calculation Worker",
   });
 
-  const sessionBeta = manager.createSession({
+  const sessionBeta = await manager.createSession({
     sessionId: "session_beta",
     title: "Time & Date Worker",
   });
 
-  const sessionGamma = manager.createSession({
+  const sessionGamma = await manager.createSession({
     sessionId: "session_gamma",
     title: "General Knowledge Worker",
   });
@@ -185,8 +185,11 @@ async function verifyConcurrentSessions() {
     console.log(
       "\n>>> SUCCESS: All 3 sessions executed concurrently with 100% strict state isolation and zero cross-talk! <<<",
     );
+    manager.clear();
+    process.exit(0);
   } else {
     console.error("\n>>> FAILURE: Isolation check failed! <<<");
+    manager.clear();
     process.exit(1);
   }
 }

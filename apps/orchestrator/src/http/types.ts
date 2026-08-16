@@ -3,6 +3,8 @@ import type { SessionSummary } from "../session/types";
 
 export interface CreateSessionRequest {
   title?: string;
+  role?: string;
+  model?: string;
   tenantId?: string;
   namespace?: string;
   systemPrompt?: string;
@@ -12,6 +14,8 @@ export interface CreateSessionRequest {
 export interface CreateSessionResponse {
   id: string;
   title: string;
+  role?: string;
+  model?: string;
   tenantId?: string;
   namespace?: string;
   status: string;
@@ -26,12 +30,16 @@ export interface SessionListResponse {
 export interface SessionDetailResponse {
   id: string;
   title: string;
+  role?: string;
+  model?: string;
   tenantId?: string;
   namespace?: string;
   status: string;
   createdAt: number;
   metadata: {
     title: string;
+    role?: string;
+    model?: string;
     tenantId?: string;
     namespace?: string;
     createdAt: number;

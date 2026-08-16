@@ -10,7 +10,7 @@ use crate::error::SandboxError;
 static CGROUP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Resource limits for a cgroups v2 sandbox (Bulkhead pattern)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CgroupLimits {
     pub cpu_quota_us: Option<u64>,
     pub cpu_period_us: Option<u64>,

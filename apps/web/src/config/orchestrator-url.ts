@@ -6,7 +6,7 @@ export function getOrchestratorUrl(): string {
     return process.env.NEXT_PUBLIC_ORCHESTRATOR_URL.replace(/\/$/, "");
   }
 
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && window.location) {
     // When behind an Ingress / Service proxy sharing the origin
     if (window.location.port === "3000" || !window.location.port) {
       return window.location.origin.replace(/:3000$/, ":4000");

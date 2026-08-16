@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { OpenRouterProvider } from "../provider/openrouter";
 import { ToolRegistry } from "../tools/registry";
 import { Session } from "./session";
+import { resolveSessionConfig } from "./session-config";
 import type {
   CreateSessionOptions,
   SessionId,
@@ -21,6 +22,9 @@ import {
   type JobPriority,
   type QueueMetrics,
 } from "../queue";
+import { getBugHunterAuditLogger } from "../roles/bug-hunter-audit";
+import { getPreviewManager } from "../preview/preview-manager";
+import { synthesizeLivePreview } from "../preview/preview-synthesizer";
 
 export class SessionManager extends EventEmitter {
   private sessions = new Map<SessionId, Session>();
@@ -107,21 +111,18 @@ export class SessionManager extends EventEmitter {
       );
     }
 
-    const session = new Session({
-      sessionId,
-      title: options.title,
-      tenantId: options.tenantId,
-      namespace: options.namespace,
-      systemPrompt: options.systemPrompt || this.config.defaultSystemPrompt,
-      model: options.model || this.config.defaultModel,
-      temperature: options.temperature,
-      maxSteps: options.maxSteps || this.config.defaultMaxSteps,
-      provider: options.provider || this.config.defaultProvider,
-      tools: options.tools || this.config.defaultTools,
-      guardrails: options.guardrails || this.config.defaultGuardrails,
-      metadata: options.metadata,
-      onHumanApprovalRequired: options.onHumanApprovalRequired,
-    });
+    const resolvedConfig = resolveSessionConfig(
+      {
+        sessionId,
+        ...options,
+        provider: options.provider || this.config.defaultProvider,
+        tools: options.tools || this.config.defaultTools,
+        guardrails: options.guardrails || this.config.defaultGuardrails,
+      },
+      this.config,
+    );
+
+    const session = new Session(resolvedConfig);
 
     this.bindSessionEvents(session);
     this.sessions.set(sessionId, session);
@@ -287,6 +288,18 @@ export class SessionManager extends EventEmitter {
     session.on("message", (msg) => {
       this.emit("sessionMessage", session.id, msg);
 
+      // Automatically synthesize live preview when assistant generates frontend code
+      if (msg.role === "assistant" && msg.content) {
+        try {
+          const liveHtml = synthesizeLivePreview(msg.content, session.id);
+          if (liveHtml) {
+            getPreviewManager().setPreviewContent(session.id, liveHtml);
+          }
+        } catch {
+          // Graceful fallback
+        }
+      }
+
       if (this.autoPersist) {
         if (this.sessionRepository) {
           this.sessionRepository
@@ -322,6 +335,24 @@ export class SessionManager extends EventEmitter {
       }
     });
 
+    session.on("action", (actions) => {
+      for (const act of actions) {
+        if (act.name === "write_file" && act.arguments?.content) {
+          try {
+            const liveHtml = synthesizeLivePreview(
+              act.arguments.content,
+              session.id,
+            );
+            if (liveHtml) {
+              getPreviewManager().setPreviewContent(session.id, liveHtml);
+            }
+          } catch {
+            // Graceful fallback
+          }
+        }
+      }
+    });
+
     session.on("turnCompleted", (turnData: any) => {
       if (this.autoPersist) {
         this.persistTurnFromEvent(session, turnData).catch((err) => {
@@ -332,6 +363,50 @@ export class SessionManager extends EventEmitter {
         });
       }
     });
+
+    session.on("interSessionMessage", (msg) => {
+      this.emit("interSessionMessage", session.id, msg);
+    });
+
+    // Adversarial Sandbox Hardening: Bug Hunter Append-Only Cryptographic Audit Log
+    if (
+      session.getRole() === "bug_hunter" ||
+      session.metadata?.role === "bug_hunter"
+    ) {
+      const auditLogger = getBugHunterAuditLogger();
+      const squadId = (session.metadata?.squadId as string) || undefined;
+
+      session.on("action", (actions) => {
+        for (const act of actions) {
+          auditLogger.recordAction({
+            sessionId: session.id,
+            squadId,
+            action: act.name || "tool_call",
+            input: act.arguments || {},
+            tenantId: session.getTenantId(),
+            namespace: session.getNamespace(),
+          });
+        }
+      });
+
+      session.on("observation", (observations) => {
+        for (const obs of observations) {
+          auditLogger.recordAction({
+            sessionId: session.id,
+            squadId,
+            action: `${obs.name || "tool"}:observation`,
+            input: { callId: obs.callId },
+            output:
+              typeof obs.output === "string"
+                ? obs.output
+                : JSON.stringify(obs.output),
+            error: obs.error,
+            tenantId: session.getTenantId(),
+            namespace: session.getNamespace(),
+          });
+        }
+      });
+    }
 
     session.on("error", (error) => {
       this.emit("sessionError", session.id, error);
@@ -460,7 +535,16 @@ export class SessionManager extends EventEmitter {
     if (filter?.namespace && filter.namespace !== "all") {
       summaries = summaries.filter((s) => s.namespace === filter.namespace);
     }
-    return summaries;
+    const getTime = (val: Date | string | number | undefined): number => {
+      if (!val) return 0;
+      if (val instanceof Date) return val.getTime();
+      return new Date(val).getTime() || 0;
+    };
+    return summaries.sort(
+      (a, b) =>
+        getTime(b.updatedAt || b.createdAt) -
+        getTime(a.updatedAt || a.createdAt),
+    );
   }
 
   getAll(): Session[] {

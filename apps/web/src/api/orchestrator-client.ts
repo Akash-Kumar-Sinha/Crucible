@@ -43,20 +43,139 @@ export interface AgentMessage {
   name?: string;
 }
 
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  contextLength: number;
+  isFree: boolean;
+  provider: string;
+}
+
+export interface RoleInfo {
+  id: string;
+  name: string;
+  description: string;
+  defaultModel: string;
+  allowedTools: string[];
+  readOnly: boolean;
+  tagColor?: string;
+  capabilities: string[];
+}
+
+export interface InterSessionMessage {
+  id: string;
+  sourceSessionId: string;
+  targetSessionId: string;
+  type: "delegation" | "result" | "query" | "event" | "notification";
+  payload: Record<string, unknown>;
+  timestamp: number;
+  correlationId?: string;
+  tenantId?: string;
+}
+
+export interface SquadInfo {
+  id: string;
+  name: string;
+  stage:
+    | "idle"
+    | "coding"
+    | "testing"
+    | "auditing"
+    | "fixing"
+    | "completed"
+    | "failed"
+    | "stalled";
+  statusLine: string;
+  activeRole?: string;
+  activeSessionId?: string;
+  members: Record<
+    string,
+    { role: string; sessionId: string; model?: string; active: boolean }
+  >;
+  activeGoal?: string;
+  fixIterationCount: number;
+  maxFixIterations: number;
+  createdAt: number;
+  updatedAt: number;
+  stageStartedAt: number;
+  stageTimeoutMs: number;
+  tenantId?: string;
+  namespace?: string;
+  history?: Array<{
+    fromStage: string;
+    toStage: string;
+    timestamp: number;
+    triggerRole?: string;
+    targetRole?: string;
+    reason: string;
+  }>;
+}
+
+export interface AuditRecord {
+  id: string;
+  sequence: number;
+  sessionId: string;
+  squadId?: string;
+  role: "bug_hunter" | string;
+  action: string;
+  input: Record<string, unknown> | string;
+  output?: string;
+  error?: string;
+  sandboxed: boolean;
+  networkBlocked: boolean;
+  readOnlyEnforced: boolean;
+  timestamp: number;
+  previousHash: string;
+  checksum: string;
+}
+
+export interface AuditIntegrityResult {
+  valid: boolean;
+  totalRecords: number;
+  brokenSequence?: number;
+}
+
+export interface PreviewInfo {
+  sessionId: string;
+  port: number;
+  status: "idle" | "starting" | "ready" | "crashed" | "stopped";
+  framework: "vite" | "static" | "react" | "next" | "html";
+  targetUrl: string;
+  proxiedPath: string;
+  startedAt: number;
+  lastActiveAt: number;
+  error?: string;
+}
+
 export interface SessionDetail {
   id: string;
   title: string;
+  role?: string;
+  model?: string;
   tenantId?: string;
   namespace?: string;
   status: string;
   createdAt: number;
   metadata: {
     title: string;
+    role?: string;
+    model?: string;
     tenantId?: string;
     namespace?: string;
     createdAt: number;
     turnCount: number;
     lastActiveAt: number;
+    contextWindow?: {
+      totalTokens?: number;
+      limit?: number;
+      usagePercent?: number;
+      isSummarized?: boolean;
+      summarizedTurnCount?: number;
+      runningSummary?: string;
+      strategyName?: string;
+    };
+    [key: string]: unknown;
   };
   stepCount: number;
   messages: AgentMessage[];
@@ -104,26 +223,23 @@ export class OrchestratorClient {
         headers,
         signal: controller.signal,
       });
-    } catch (networkErr: unknown) {
+    } catch (fetchErr: any) {
       clearTimeout(timer);
-      const networkError =
-        networkErr instanceof Error
-          ? networkErr
-          : new Error(String(networkErr));
       const isTimeout =
-        networkError.name === "AbortError" ||
-        networkError.message.includes("aborted");
-      const errorMsg = isTimeout
-        ? `Request timed out after ${timeoutMs}ms while connecting to ${this.baseUrl}${path}.`
-        : `Cannot connect to Crucible Core Server at ${this.baseUrl}. Please verify that 'make serve' is running.`;
+        fetchErr.name === "AbortError" ||
+        fetchErr.message?.includes("aborted") ||
+        fetchErr.message?.includes("timed out");
+      const errorMessage = isTimeout
+        ? `Request timed out after ${timeoutMs}ms while connecting to ${url}`
+        : `Network connection failed while connecting to ${url}: ${fetchErr.message}`;
 
-      captureClientError(networkError, {
-        action: "http_request",
+      captureClientError(new Error(errorMessage), {
+        action: "http_network_failure",
         route: path,
-        extra: { url, isTimeout, timeoutMs },
+        extra: { url, timeoutMs },
       });
 
-      throw new Error(errorMsg, { cause: networkErr });
+      throw new Error(errorMessage, { cause: fetchErr });
     } finally {
       clearTimeout(timer);
     }
@@ -174,13 +290,172 @@ export class OrchestratorClient {
     return data.sessions || [];
   }
 
+  async listModels(): Promise<ModelInfo[]> {
+    try {
+      const data = await this.request<{
+        status: string;
+        data: ModelInfo[];
+      }>("/models", { timeoutMs: 5_000 });
+      return data.data || [];
+    } catch {
+      return [
+        {
+          id: "openrouter/free",
+          name: "OpenRouter Free Auto-Router",
+          description: "High-speed free tier auto-routing",
+          contextLength: 32768,
+          isFree: true,
+          provider: "openrouter",
+        },
+        {
+          id: "meta-llama/llama-3.3-70b-instruct:free",
+          name: "Llama 3.3 70B Instruct (Free)",
+          description: "Meta open instruction-tuned model",
+          contextLength: 131072,
+          isFree: true,
+          provider: "meta-llama",
+        },
+        {
+          id: "google/gemini-2.0-flash-exp:free",
+          name: "Gemini 2.0 Flash Experimental (Free)",
+          description: "Google multimodal reasoning model",
+          contextLength: 1048576,
+          isFree: true,
+          provider: "google",
+        },
+        {
+          id: "anthropic/claude-3.5-sonnet",
+          name: "Claude 3.5 Sonnet",
+          description: "State-of-the-art coding & reasoning",
+          contextLength: 200000,
+          isFree: false,
+          provider: "anthropic",
+        },
+        {
+          id: "openai/gpt-4o",
+          name: "GPT-4o",
+          description: "OpenAI flagship multimodal intelligence",
+          contextLength: 128000,
+          isFree: false,
+          provider: "openai",
+        },
+        {
+          id: "deepseek/deepseek-chat",
+          name: "DeepSeek V3",
+          description: "High-efficiency open reasoning",
+          contextLength: 64000,
+          isFree: false,
+          provider: "deepseek",
+        },
+      ];
+    }
+  }
+
+  async listRoles(): Promise<RoleInfo[]> {
+    try {
+      const data = await this.request<{
+        status: string;
+        data: RoleInfo[];
+      }>("/roles", { timeoutMs: 5_000 });
+      return data.data || [];
+    } catch {
+      return [
+        {
+          id: "coder",
+          name: "Coder",
+          description:
+            "Autonomous software engineer with write & execution capabilities",
+          defaultModel: "anthropic/claude-3.5-sonnet",
+          allowedTools: [
+            "bash_exec",
+            "read_file",
+            "write_file",
+            "calculator",
+            "get_current_time",
+          ],
+          readOnly: false,
+          tagColor: "sky",
+          capabilities: [
+            "Feature implementation",
+            "Refactoring",
+            "Type-safe modeling",
+          ],
+        },
+        {
+          id: "test_writer",
+          name: "Test Writer",
+          description: "Quality assurance & test suite authoring specialist",
+          defaultModel: "anthropic/claude-3.5-sonnet",
+          allowedTools: [
+            "bash_exec",
+            "read_file",
+            "write_file",
+            "calculator",
+            "get_current_time",
+          ],
+          readOnly: false,
+          tagColor: "emerald",
+          capabilities: [
+            "Unit & integration tests",
+            "Boundary tests",
+            "Mocking",
+          ],
+        },
+        {
+          id: "bug_hunter",
+          name: "Bug Hunter",
+          description:
+            "White-hat security & fault auditor (read-only diagnostics)",
+          defaultModel: "deepseek/deepseek-chat",
+          allowedTools: [
+            "read_file",
+            "bash_exec",
+            "calculator",
+            "get_current_time",
+          ],
+          readOnly: true,
+          tagColor: "rose",
+          capabilities: [
+            "Vulnerability probing",
+            "OWASP auditing",
+            "Race conditions",
+          ],
+        },
+        {
+          id: "bug_fixer",
+          name: "Bug Fixer",
+          description: "Root-cause debugging & surgical patch specialist",
+          defaultModel: "anthropic/claude-3.5-sonnet",
+          allowedTools: [
+            "bash_exec",
+            "read_file",
+            "write_file",
+            "calculator",
+            "get_current_time",
+          ],
+          readOnly: false,
+          tagColor: "amber",
+          capabilities: [
+            "Root-cause debugging",
+            "Surgical patches",
+            "Regression avoidance",
+          ],
+        },
+      ];
+    }
+  }
+
   async createSession(
     title?: string,
     systemPrompt?: string,
     scope?: TenantScope,
+    model?: string,
+    role?: string,
   ): Promise<{
     id: string;
     title: string;
+    role?: string;
+    model?: string;
     tenantId?: string;
     namespace?: string;
     status: string;
@@ -189,6 +464,8 @@ export class OrchestratorClient {
     return this.request<{
       id: string;
       title: string;
+      role?: string;
+      model?: string;
       tenantId?: string;
       namespace?: string;
       status: string;
@@ -201,8 +478,58 @@ export class OrchestratorClient {
         systemPrompt,
         tenantId: scope?.tenantId,
         namespace: scope?.namespace,
+        model,
+        role,
       }),
     });
+  }
+
+  async getInterSessionMessages(limit = 50): Promise<{
+    messages: InterSessionMessage[];
+    metrics: {
+      activeSubscribers: number;
+      totalPublished: number;
+      totalDelivered: number;
+      totalUndeliverable: number;
+      deadLetterCount: number;
+    };
+    deadLetters: InterSessionMessage[];
+  }> {
+    try {
+      const data = await this.request<{
+        status: string;
+        data: {
+          messages: InterSessionMessage[];
+          metrics: any;
+          deadLetters: InterSessionMessage[];
+        };
+      }>(`/inter-session/messages?limit=${limit}`, { timeoutMs: 4_000 });
+      return (
+        data.data || {
+          messages: [],
+          metrics: {
+            activeSubscribers: 0,
+            totalPublished: 0,
+            totalDelivered: 0,
+            totalUndeliverable: 0,
+            deadLetterCount: 0,
+          },
+          deadLetters: [],
+        }
+      );
+    } catch {
+      return {
+        messages: [],
+        metrics: {
+          activeSubscribers: 0,
+          totalPublished: 0,
+          totalDelivered: 0,
+          totalUndeliverable: 0,
+          deadLetterCount: 0,
+        },
+        deadLetters: [],
+      };
+    }
   }
 
   async getSession(id: string): Promise<SessionDetail> {
@@ -349,6 +676,109 @@ export class OrchestratorClient {
       : "/infra/status";
     const path = query ? `${basePath}?${query}` : basePath;
     return this.request(path, { timeoutMs: 5_000 });
+  }
+
+  async getSquads(): Promise<{ squads: SquadInfo[]; count: number }> {
+    return this.request("/squads", { timeoutMs: 5_000 });
+  }
+
+  async getSquad(squadId: string): Promise<{ squad: SquadInfo }> {
+    return this.request(`/squads/${encodeURIComponent(squadId)}`, {
+      timeoutMs: 5_000,
+    });
+  }
+
+  async createSquad(
+    config: Partial<SquadInfo> & { name: string; autoCreateSessions?: boolean },
+  ): Promise<{ squad: SquadInfo; message: string }> {
+    return this.request("/squads", {
+      method: "POST",
+      body: JSON.stringify(config),
+      timeoutMs: 10_000,
+    });
+  }
+
+  async startSquad(
+    squadId: string,
+    goal: string,
+  ): Promise<{ squad: SquadInfo; message: string }> {
+    return this.request(`/squads/${encodeURIComponent(squadId)}/start`, {
+      method: "POST",
+      body: JSON.stringify({ goal }),
+      timeoutMs: 10_000,
+    });
+  }
+
+  async transitionSquad(
+    squadId: string,
+    toStage: string,
+    reason: string,
+  ): Promise<{ squad: SquadInfo; message: string }> {
+    return this.request(`/squads/${encodeURIComponent(squadId)}/transition`, {
+      method: "POST",
+      body: JSON.stringify({ toStage, reason }),
+      timeoutMs: 10_000,
+    });
+  }
+
+  async getAuditRecords(params?: {
+    sessionId?: string;
+    squadId?: string;
+    limit?: number;
+  }): Promise<{
+    status: string;
+    records: AuditRecord[];
+    total: number;
+    integrity: AuditIntegrityResult;
+  }> {
+    const searchParams = new URLSearchParams();
+    if (params?.sessionId) searchParams.set("sessionId", params.sessionId);
+    if (params?.squadId) searchParams.set("squadId", params.squadId);
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    const query = searchParams.toString();
+    const path = query ? `/audit/records?${query}` : "/audit/records";
+    return this.request(path, { timeoutMs: 5_000 });
+  }
+
+  async verifyAuditIntegrity(): Promise<{
+    status: string;
+    integrity: AuditIntegrityResult;
+  }> {
+    return this.request("/audit/verify", { timeoutMs: 5_000 });
+  }
+
+  async getPreviewStatus(sessionId: string): Promise<{
+    status: string;
+    active: boolean;
+    preview: PreviewInfo | null;
+  }> {
+    return this.request(`/preview/${encodeURIComponent(sessionId)}/status`, {
+      timeoutMs: 5_000,
+    });
+  }
+
+  async startPreview(
+    sessionId: string,
+    options?: { port?: number; framework?: string; staticHtml?: string },
+  ): Promise<{ status: string; preview: PreviewInfo }> {
+    return this.request(`/preview/${encodeURIComponent(sessionId)}/start`, {
+      method: "POST",
+      body: JSON.stringify(options || {}),
+      timeoutMs: 10_000,
+    });
+  }
+
+  async stopPreview(
+    sessionId: string,
+  ): Promise<{ status: string; stopped: boolean }> {
+    return this.request(`/preview/${encodeURIComponent(sessionId)}/stop`, {
+      method: "POST",
+      timeoutMs: 5_000,
+    });
+  }
+
+  getPreviewUrl(sessionId: string): string {
+    return `${getOrchestratorUrl()}/preview/${encodeURIComponent(sessionId)}/`;
   }
 }
 

@@ -18,6 +18,7 @@ export type SessionStatus =
 export interface SessionConfig {
   sessionId?: SessionId;
   title?: string;
+  role?: string;
   tenantId?: string;
   namespace?: string;
   systemPrompt?: string;
@@ -27,6 +28,7 @@ export interface SessionConfig {
   provider?: ModelProvider;
   tools?: ToolRegistry;
   guardrails?: GuardrailChain;
+  sessionBus?: any;
   metadata?: Record<string, unknown>;
   onHumanApprovalRequired?: (
     pendingCalls: ToolCall[],
@@ -36,6 +38,7 @@ export interface SessionConfig {
 export interface SessionMetadata {
   id: SessionId;
   title?: string;
+  role?: string;
   tenantId?: string;
   namespace?: string;
   createdAt: Date;
@@ -47,6 +50,7 @@ export interface SessionMetadata {
 export interface SessionSummary {
   id: SessionId;
   title?: string;
+  role?: string;
   tenantId?: string;
   namespace?: string;
   status: SessionStatus;

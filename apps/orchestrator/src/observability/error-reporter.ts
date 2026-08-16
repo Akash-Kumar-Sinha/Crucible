@@ -7,6 +7,7 @@ import { tracer } from "./otel";
 
 export interface AgentErrorContext {
   sessionId?: string;
+  role?: string;
   tenantId?: string;
   namespace?: string;
   turnId?: number;
@@ -22,11 +23,20 @@ export interface AgentErrorContext {
   alert?: string;
   code?: number;
   reason?: string;
+  squadId?: string;
+  squadName?: string;
+  stage?: string;
+  elapsedMs?: number;
+  timeoutMs?: number;
+  activeRole?: string;
+  activeSessionId?: string;
+  action?: string;
   extra?: Record<string, unknown>;
 }
 
 export interface ContainerFailureContext {
   containerId?: string;
+  role?: string;
   image?: string;
   exitCode?: number;
   oomKilled?: boolean;
@@ -615,6 +625,159 @@ export class ErrorReporter extends EventEmitter {
     return errorId;
   }
 
+  recordContextCompactionAlert(info: {
+    sessionId: string;
+    tenantId?: string;
+    namespace?: string;
+    model?: string;
+    compactionCount: number;
+    windowMs?: number;
+    recommendation?: string;
+  }): string {
+    const errorId = `ctx_compaction_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const timestamp = new Date().toISOString();
+    const scope = this.normalizeScope({
+      tenantId: info.tenantId,
+      namespace: info.namespace,
+    });
+
+    const message = `Frequent context compaction threshold reached (${info.compactionCount} times) for session ${info.sessionId}`;
+
+    const record: CapturedErrorRecord = {
+      id: errorId,
+      timestamp,
+      message,
+      level: "warning",
+      tenantId: scope.tenantId,
+      namespace: scope.namespace,
+      scopeKey: scope.scopeKey,
+      context: {
+        sessionId: info.sessionId,
+        tenantId: scope.tenantId,
+        namespace: scope.namespace,
+        model: info.model,
+        component: "ContextWindowManager",
+        alert: "RepeatedContextCompaction",
+        extra: {
+          compactionCount: info.compactionCount,
+          windowMs: info.windowMs,
+          recommendation: info.recommendation,
+        },
+      },
+      breadcrumbs: [...this.breadcrumbs],
+    };
+
+    const scoped = this.getScopeBucket(scope);
+    this.globalBucket.totalErrorsCount += 1;
+    this.globalBucket.recentErrors.push(record);
+    if (this.globalBucket.recentErrors.length > this.maxRecentErrors) {
+      this.globalBucket.recentErrors.shift();
+    }
+
+    scoped.bucket.totalErrorsCount += 1;
+    scoped.bucket.recentErrors.push(record);
+    if (scoped.bucket.recentErrors.length > this.maxRecentErrors) {
+      scoped.bucket.recentErrors.shift();
+    }
+
+    logger.warn(
+      {
+        errorId,
+        sessionId: info.sessionId,
+        tenantId: scope.tenantId,
+        model: info.model,
+        compactionCount: info.compactionCount,
+      },
+      `[Context Window Alert] ${message}`,
+    );
+
+    this.emit("contextCompactionAlert", record);
+    this.emit("errorCaptured", record);
+
+    return errorId;
+  }
+
+  recordSquadStalledAlert(info: {
+    squadId: string;
+    squadName?: string;
+    stage: string;
+    elapsedMs: number;
+    timeoutMs: number;
+    activeRole?: string;
+    activeSessionId?: string;
+    tenantId?: string;
+    namespace?: string;
+    reason?: string;
+  }): string {
+    const errorId = `sq_stall_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const timestamp = new Date().toISOString();
+    const scope = this.normalizeScope({
+      tenantId: info.tenantId,
+      namespace: info.namespace,
+    });
+
+    const message = `Squad '${info.squadName || info.squadId}' stalled in stage '${info.stage}' for ${Math.round(info.elapsedMs / 1000)}s (limit: ${Math.round(info.timeoutMs / 1000)}s)`;
+
+    const record: CapturedErrorRecord = {
+      id: errorId,
+      timestamp,
+      message,
+      level: "error",
+      tenantId: scope.tenantId,
+      namespace: scope.namespace,
+      scopeKey: scope.scopeKey,
+      context: {
+        alert: "CRUCIBLE_SQUAD_STAGE_STALLED_ALERT",
+        squadId: info.squadId,
+        squadName: info.squadName,
+        stage: info.stage,
+        elapsedMs: info.elapsedMs,
+        timeoutMs: info.timeoutMs,
+        activeRole: info.activeRole,
+        activeSessionId: info.activeSessionId,
+        tenantId: scope.tenantId,
+        namespace: scope.namespace,
+        reason: info.reason,
+      },
+      breadcrumbs: [...this.breadcrumbs],
+    };
+
+    const scoped = this.getScopeBucket(scope);
+    this.globalBucket.totalErrorsCount += 1;
+    this.globalBucket.recentErrors.push(record);
+    if (this.globalBucket.recentErrors.length > this.maxRecentErrors) {
+      this.globalBucket.recentErrors.shift();
+    }
+
+    scoped.bucket.totalErrorsCount += 1;
+    scoped.bucket.recentErrors.push(record);
+    if (scoped.bucket.recentErrors.length > this.maxRecentErrors) {
+      scoped.bucket.recentErrors.shift();
+    }
+
+    logger.error(
+      {
+        errorId,
+        squadId: info.squadId,
+        squadName: info.squadName,
+        stage: info.stage,
+        elapsedMs: info.elapsedMs,
+        timeoutMs: info.timeoutMs,
+        activeRole: info.activeRole,
+        activeSessionId: info.activeSessionId,
+        alert: "CRUCIBLE_SQUAD_STAGE_STALLED_ALERT",
+        tenantId: scope.tenantId,
+        namespace: scope.namespace,
+      },
+      `[Squad Stalled Alert] ${message}`,
+    );
+
+    this.emit("squadStalledAlert", record);
+    this.emit("errorCaptured", record);
+
+    return errorId;
+  }
+
   getMetrics(scope?: {
     tenantId?: string;
     namespace?: string;
@@ -755,4 +918,16 @@ export function captureContainerFailure(info: ContainerFailureContext): string {
 
 export function captureInfraFailure(info: InfraFailureContext): string {
   return getErrorReporter().captureInfraFailure(info);
+}
+
+export function captureContextCompactionAlert(info: {
+  sessionId: string;
+  tenantId?: string;
+  namespace?: string;
+  model?: string;
+  compactionCount: number;
+  windowMs?: number;
+  recommendation?: string;
+}): string {
+  return getErrorReporter().recordContextCompactionAlert(info);
 }

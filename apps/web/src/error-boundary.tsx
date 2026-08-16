@@ -121,7 +121,7 @@ export class ErrorBoundary extends Component<
         <Card className="w-full max-w-xl border border-white/8 shadow-xl">
           <CardHeader>
             <div className="col-span-1 flex min-w-0 items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-destructive/30 bg-destructive/15 text-destructive">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-destructive/30 bg-destructive/15 text-destructive">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="min-w-0">

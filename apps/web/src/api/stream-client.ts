@@ -13,6 +13,7 @@ export interface StreamEventMap {
   status_change: { status: string; prev?: string };
   queued: { jobId?: string; queuePosition?: number; backlogCount?: number };
   message: { message: AgentMessage };
+  inter_session_message: { message: any };
   done: { finalResponse?: string };
   error: { error: unknown };
   heartbeat: { ping: boolean };

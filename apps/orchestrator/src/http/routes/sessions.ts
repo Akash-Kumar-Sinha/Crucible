@@ -94,6 +94,8 @@ export class SessionRouteHandler {
     try {
       const session = this.sessionManager.createSession({
         title: body.title || "New Conversation",
+        role: body.role,
+        model: body.model,
         tenantId: body.tenantId,
         namespace: body.namespace,
         systemPrompt: body.systemPrompt,
@@ -104,6 +106,8 @@ export class SessionRouteHandler {
       const response: CreateSessionResponse = {
         id: session.id,
         title: meta.title || session.id,
+        role: session.getRole(),
+        model: session.getModel(),
         tenantId: meta.tenantId,
         namespace: meta.namespace,
         status: session.getStatus(),
@@ -118,6 +122,8 @@ export class SessionRouteHandler {
         {
           sessionId: session.id,
           title: response.title,
+          role: response.role,
+          model: response.model,
           tenantId: response.tenantId,
           namespace: response.namespace,
           durationMs,
@@ -134,6 +140,7 @@ export class SessionRouteHandler {
       );
       getErrorReporter().captureAgentError(err, {
         state: "session_creation_failed",
+        role: body.role,
         tenantId: body.tenantId,
         extra: { body },
       });
@@ -173,12 +180,16 @@ export class SessionRouteHandler {
     const response: SessionDetailResponse = {
       id: session.id,
       title: metadata.title || session.id,
+      role: session.getRole(),
+      model: session.getModel(),
       tenantId: metadata.tenantId,
       namespace: metadata.namespace,
       status: session.getStatus(),
       createdAt: createdAtMs,
       metadata: {
         title: metadata.title || session.id,
+        role: session.getRole(),
+        model: session.getModel(),
         tenantId: metadata.tenantId,
         namespace: metadata.namespace,
         createdAt: createdAtMs,
@@ -305,6 +316,67 @@ export class SessionRouteHandler {
         "EXECUTION_FAILED",
         err.message || "Failed to process message in session",
         500,
+        { error: String(err) },
+      );
+    }
+  }
+
+  async sendInterSessionMessage(
+    sessionId: string,
+    req: Request,
+  ): Promise<Response> {
+    const t0 = performance.now();
+    const session = this.sessionManager.get(sessionId);
+    if (!session) {
+      return this.errorResponse(
+        "SESSION_NOT_FOUND",
+        `Source session '${sessionId}' was not found.`,
+        404,
+        { sessionId },
+      );
+    }
+
+    try {
+      const body = await req.json();
+      if (!body.targetSessionId) {
+        return this.errorResponse(
+          "INVALID_TARGET_SESSION",
+          "A valid 'targetSessionId' must be specified in the request body.",
+          400,
+        );
+      }
+
+      const result = await session.sendToSession(body.targetSessionId, {
+        content: body.content,
+        task: body.task,
+        data: body.data,
+        type: body.type,
+        correlationId: body.correlationId,
+      });
+
+      const durationMs = Math.round(performance.now() - t0);
+      logger.info(
+        {
+          sourceSessionId: sessionId,
+          targetSessionId: body.targetSessionId,
+          delivered: result.delivered,
+          durationMs,
+        },
+        "Inter-session message publication evaluated",
+      );
+
+      return this.jsonResponse(
+        {
+          status: result.delivered ? "success" : "undeliverable",
+          data: result,
+        },
+        result.delivered ? 200 : 422,
+      );
+    } catch (err: any) {
+      return this.errorResponse(
+        "MESSAGE_PUBLISH_FAILED",
+        err.message || "Failed to publish inter-session message",
+        400,
         { error: String(err) },
       );
     }

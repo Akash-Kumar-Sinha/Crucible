@@ -199,7 +199,7 @@ describe("Job Queue & Scheduling Subsystem", () => {
         autoStart: false,
       });
 
-      scheduler.on("jobDeadLetter", (job, reason) => {
+      scheduler.on("jobDeadLetter", (job, _reason) => {
         if (job.sessionId === "sess_failing_task") {
           deadLetterAlertReceived = true;
         }
@@ -239,7 +239,7 @@ describe("Job Queue & Scheduling Subsystem", () => {
         queue,
       );
 
-      scheduler.on("backlogAlert", (metrics, reason) => {
+      scheduler.on("backlogAlert", (_metrics, _reason) => {
         backlogAlertTriggered = true;
       });
 
