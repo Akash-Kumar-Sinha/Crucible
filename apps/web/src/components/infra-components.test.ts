@@ -10,7 +10,6 @@ import { RoleModelPicker } from "@/components/workspace/RoleModelPicker";
 import { TokenUsagePanel } from "@/components/metrics/TokenUsagePanel";
 import { ModelUsagePanel } from "@/components/metrics/ModelUsagePanel";
 import { RoleActivityPanel } from "@/components/metrics/RoleActivityPanel";
-import { InterSessionFeed } from "@/components/workspace/InterSessionFeed";
 import { SessionSidebar } from "@/components/sidebar/SessionSidebar";
 
 describe("Infrastructure UI Components", () => {
@@ -179,23 +178,6 @@ describe("Infrastructure UI Components", () => {
     });
     expect(panel).toBeDefined();
     expect(panel.props.crossSessionMetrics?.totalPublished).toBe(12);
-  });
-
-  it("should render InterSessionFeed component with session list and open state", () => {
-    expect(typeof InterSessionFeed).toBe("function");
-
-    const feed = React.createElement(InterSessionFeed, {
-      sessions: [
-        { id: "sess_coder_1", title: "Auth Module Coder" },
-        { id: "sess_tester_1", title: "Security Test Writer" },
-      ],
-      activeSessionId: "sess_coder_1",
-      isOpen: true,
-    });
-
-    expect(feed).toBeDefined();
-    expect(feed.props.sessions?.length).toBe(2);
-    expect(feed.props.isOpen).toBe(true);
   });
 
   it("should render SessionSidebar pinned open on desktop viewports by default", () => {

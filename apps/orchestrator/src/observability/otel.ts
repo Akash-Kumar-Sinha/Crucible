@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
-import { getSessionBus } from "../session/session-bus";
 
 export type SpanKind =
   "INTERNAL" | "SERVER" | "CLIENT" | "PRODUCER" | "CONSUMER";
@@ -645,20 +644,14 @@ export class SpanCollector extends EventEmitter {
       });
     }
 
-    // Cross-session bus metrics
-    let crossSessionMetrics = {
+    // Cross-session bus metrics (default zeroed)
+    const crossSessionMetrics = {
       totalPublished: 0,
       totalDelivered: 0,
       totalUndeliverable: 0,
       deadLetterCount: 0,
       activeSubscribers: 0,
     };
-    try {
-      const busMetrics = getSessionBus().getMetrics();
-      if (busMetrics) crossSessionMetrics = busMetrics;
-    } catch (_err) {
-      // SessionBus not initialized yet in isolated unit tests
-    }
 
     return {
       timestamp: Date.now(),

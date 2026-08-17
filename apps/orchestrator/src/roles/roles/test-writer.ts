@@ -5,7 +5,7 @@ export const testWriterRole: AgentRole = {
   name: "Test Writer",
   description:
     "Quality assurance and test automation engineer specialized in designing comprehensive unit, integration, and fuzz test suites.",
-  defaultModel: "anthropic/claude-3.5-sonnet",
+  defaultModel: "openrouter/free",
   allowedTools: [
     "bash_exec",
     "read_file",

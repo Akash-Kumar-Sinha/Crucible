@@ -17,4 +17,5 @@ resources:
   - orchestrator-deployment.yaml
   - executor-job-template.yaml
   - web-deployment.yaml
+  - livekit-deployment.yaml
   - ingress.yaml

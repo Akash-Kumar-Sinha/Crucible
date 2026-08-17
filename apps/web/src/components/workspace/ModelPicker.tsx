@@ -20,12 +20,12 @@ export interface ModelPickerProps {
 
 const DEFAULT_MODELS: ModelInfo[] = [
   {
-    id: "anthropic/claude-3.5-sonnet",
-    name: "Claude 3.5 Sonnet",
-    description: "State-of-the-art coding and complex multi-step reasoning",
-    contextLength: 200000,
-    isFree: false,
-    provider: "anthropic",
+    id: "openrouter/free",
+    name: "OpenRouter Free Router",
+    description: "Zero-cost rate-limited free model pool",
+    contextLength: 128000,
+    isFree: true,
+    provider: "openrouter",
   },
   {
     id: "qwen/qwen-2.5-coder-32b-instruct",
@@ -36,20 +36,20 @@ const DEFAULT_MODELS: ModelInfo[] = [
     provider: "qwen",
   },
   {
-    id: "openrouter/free",
-    name: "OpenRouter Free Router",
-    description: "Zero-cost rate-limited model pool",
-    contextLength: 128000,
-    isFree: true,
-    provider: "openrouter",
-  },
-  {
     id: "meta-llama/llama-3.3-70b-instruct",
     name: "Llama 3.3 70B",
     description: "Open-weights flagship reasoning",
     contextLength: 131072,
     isFree: false,
     provider: "meta-llama",
+  },
+  {
+    id: "deepseek/deepseek-chat",
+    name: "DeepSeek V3",
+    description: "High performance cost-effective reasoning",
+    contextLength: 64000,
+    isFree: false,
+    provider: "deepseek",
   },
 ];
 

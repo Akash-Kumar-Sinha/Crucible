@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-
 import { ChevronUp } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-
 import { cn } from "@/lib/utils";
+import { RoleModelPicker } from "@/components/workspace/RoleModelPicker";
+import { VoiceButton } from "@/components/workspace/VoiceButton";
 
 export interface PromptInputProps {
   value: string;
@@ -16,16 +16,27 @@ export interface PromptInputProps {
   disabled?: boolean;
   className?: string;
   maxLength?: number;
+  selectedRole?: string;
+  selectedModel?: string;
+  onRoleChange?: (roleId: string, defaultModel?: string) => void;
+  onModelChange?: (modelId: string) => void;
+  sessionId?: string;
+  onTranscript?: (transcript: string) => void;
+  onVoiceAutoSubmit?: (transcript: string) => void;
+  voiceSlot?: React.ReactNode;
+  leftSlot?: React.ReactNode;
+  rightSlot?: React.ReactNode;
 }
 
-const roundnessClass = "rounded-lg";
+const roundnessClass = "rounded-xl";
 
 const button_theme = "bg-zinc-900 hover:bg-zinc-800";
 
 const container_theme = cn(
-  "bg-zinc-950",
-  "shadow-[0_0_80px_rgba(255,255,255,0.12)]",
-  "focus-within:shadow-[0_0_90px_rgba(255,255,255,0.2)]",
+  "bg-zinc-950/95",
+  "border border-white/10",
+  "shadow-[0_0_80px_rgba(255,255,255,0.06)]",
+  "focus-within:border-white/20 focus-within:shadow-[0_0_90px_rgba(255,255,255,0.12)]",
 );
 
 const scrollbar = cn(
@@ -41,10 +52,20 @@ export function PromptInput({
   onChange,
   onSubmit,
   isLoading,
-  placeholder = "Describe what you want to build...",
+  placeholder = "Describe what you want to build or speak a voice command...",
   disabled = false,
   className,
   maxLength,
+  selectedRole,
+  selectedModel,
+  onRoleChange,
+  onModelChange,
+  sessionId,
+  onTranscript,
+  onVoiceAutoSubmit,
+  voiceSlot,
+  leftSlot,
+  rightSlot,
 }: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -69,20 +90,21 @@ export function PromptInput({
     return () => window.removeEventListener("resize", resize);
   }, [value, isLoading]);
 
-  // Enter submits; Shift+Enter inserts a newline. Enter is always swallowed so
-  // it never leaves a stray newline behind when the prompt isn't submittable.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
     if (canSubmit) onSubmit();
   };
 
+  const hasRoleModelControls = Boolean(onRoleChange && onModelChange);
+  const _hasVoiceControls = Boolean(voiceSlot || onTranscript);
+
   return (
     <div
       className={cn(
-        "relative w-full p-2.5 sm:p-3 md:p-4 flex flex-col gap-2 sm:gap-3",
+        "relative w-full p-3 sm:p-3.5 md:p-4 flex flex-col gap-2.5 sm:gap-3",
         roundnessClass,
-        "transition-shadow duration-300 ease-out",
+        "transition-all duration-300 ease-out",
         container_theme,
         disabled && "opacity-50 cursor-not-allowed",
         className,
@@ -109,17 +131,48 @@ export function PromptInput({
         style={{ minHeight: "24px", maxHeight: "160px" }}
       />
 
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium tracking-[0.14em] uppercase text-white/20 select-none">
-          Enter
-        </span>
+      <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5 flex-wrap">
+        {/* Left Toolbar inside prompt box: Role & Model Pickers */}
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {leftSlot ? (
+            leftSlot
+          ) : hasRoleModelControls ? (
+            <RoleModelPicker
+              compact
+              selectedRole={selectedRole}
+              selectedModel={selectedModel}
+              onRoleChange={onRoleChange!}
+              onModelChange={onModelChange!}
+              disabled={disabled || isLoading}
+            />
+          ) : (
+            <span className="text-[10px] font-medium tracking-[0.14em] uppercase text-white/20 select-none">
+              Enter
+            </span>
+          )}
+        </div>
 
-        <div className="flex items-center gap-3">
+        {/* Right Toolbar inside prompt box: Mic Button, Character Counter & Send Action */}
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           {showCounter && !isLoading && (
-            <span className="font-mono text-[10px] text-neutral-500/70 tabular-nums select-none">
+            <span className="font-mono text-[10px] text-neutral-500/70 tabular-nums select-none mr-1">
               {value.length}/{maxLength}
             </span>
           )}
+
+          {/* Voice Microphone Button Inside Prompt Input */}
+          {voiceSlot ? (
+            voiceSlot
+          ) : onTranscript ? (
+            <VoiceButton
+              sessionId={sessionId || "global"}
+              onTranscript={onTranscript}
+              onAutoSubmit={onVoiceAutoSubmit}
+              disabled={disabled || isLoading}
+            />
+          ) : rightSlot ? (
+            rightSlot
+          ) : null}
 
           <AnimatePresence mode="wait" initial={false}>
             {isLoading ? (
@@ -160,17 +213,16 @@ export function PromptInput({
                 onClick={canSubmit ? onSubmit : undefined}
                 disabled={!canSubmit}
                 className={cn(
-                  "flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9",
-                  "transition-colors duration-200 focus:outline-none",
-                  roundnessClass,
+                  "flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg border border-white/10",
+                  "transition-colors duration-200 focus:outline-none cursor-pointer",
                   button_theme,
                   canSubmit
-                    ? "text-neutral-400 hover:text-neutral-300"
+                    ? "text-neutral-300 hover:text-white"
                     : "text-neutral-700",
                   !canSubmit && "cursor-not-allowed",
                 )}
               >
-                <ChevronUp className={cn("w-4 h-4 sm:w-4.5 sm:h-4.5")} />
+                <ChevronUp className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </motion.button>
             )}
           </AnimatePresence>

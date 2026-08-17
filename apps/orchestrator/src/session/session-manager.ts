@@ -23,8 +23,6 @@ import {
   type QueueMetrics,
 } from "../queue";
 import { getBugHunterAuditLogger } from "../roles/bug-hunter-audit";
-import { getPreviewManager } from "../preview/preview-manager";
-import { synthesizeLivePreview } from "../preview/preview-synthesizer";
 
 export class SessionManager extends EventEmitter {
   private sessions = new Map<SessionId, Session>();
@@ -288,18 +286,6 @@ export class SessionManager extends EventEmitter {
     session.on("message", (msg) => {
       this.emit("sessionMessage", session.id, msg);
 
-      // Automatically synthesize live preview when assistant generates frontend code
-      if (msg.role === "assistant" && msg.content) {
-        try {
-          const liveHtml = synthesizeLivePreview(msg.content, session.id);
-          if (liveHtml) {
-            getPreviewManager().setPreviewContent(session.id, liveHtml);
-          }
-        } catch {
-          // Graceful fallback
-        }
-      }
-
       if (this.autoPersist) {
         if (this.sessionRepository) {
           this.sessionRepository
@@ -331,24 +317,6 @@ export class SessionManager extends EventEmitter {
               },
             })
             .catch(() => {});
-        }
-      }
-    });
-
-    session.on("action", (actions) => {
-      for (const act of actions) {
-        if (act.name === "write_file" && act.arguments?.content) {
-          try {
-            const liveHtml = synthesizeLivePreview(
-              act.arguments.content,
-              session.id,
-            );
-            if (liveHtml) {
-              getPreviewManager().setPreviewContent(session.id, liveHtml);
-            }
-          } catch {
-            // Graceful fallback
-          }
         }
       }
     });
@@ -718,6 +686,10 @@ export class SessionManager extends EventEmitter {
 
   getJobScheduler(): JobScheduler {
     return this.jobScheduler;
+  }
+
+  getDefaultTools(): ToolRegistry {
+    return this.config.defaultTools || new ToolRegistry();
   }
 
   getQueueMetrics(): QueueMetrics {

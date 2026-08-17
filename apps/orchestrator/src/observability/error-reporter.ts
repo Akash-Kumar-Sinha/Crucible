@@ -778,6 +778,183 @@ export class ErrorReporter extends EventEmitter {
     return errorId;
   }
 
+  recordVoiceSttFailureAlert(info: {
+    sessionId: string;
+    sttEngine: string;
+    reason: string;
+    tenantId?: string;
+    namespace?: string;
+  }): string {
+    const errorId = `voice_stt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const timestamp = new Date().toISOString();
+    const scope = this.normalizeScope({
+      tenantId: info.tenantId,
+      namespace: info.namespace,
+    });
+
+    const message = `Voice STT failure with engine '${info.sttEngine}' for session ${info.sessionId}: ${info.reason}`;
+
+    const record: CapturedErrorRecord = {
+      id: errorId,
+      timestamp,
+      message,
+      level: "error",
+      tenantId: scope.tenantId,
+      namespace: scope.namespace,
+      scopeKey: scope.scopeKey,
+      context: {
+        alert: "CRUCIBLE_VOICE_STT_FAILURE_ALERT",
+        sessionId: info.sessionId,
+        component: "VoiceAgent",
+        extra: {
+          sttEngine: info.sttEngine,
+          reason: info.reason,
+        },
+      },
+      breadcrumbs: [...this.breadcrumbs],
+    };
+
+    const scoped = this.getScopeBucket(scope);
+    this.globalBucket.totalErrorsCount += 1;
+    this.globalBucket.recentErrors.push(record);
+    scoped.bucket.totalErrorsCount += 1;
+    scoped.bucket.recentErrors.push(record);
+
+    logger.error(
+      {
+        errorId,
+        alert: "CRUCIBLE_VOICE_STT_FAILURE_ALERT",
+        sessionId: info.sessionId,
+        sttEngine: info.sttEngine,
+      },
+      `[Voice STT Alert] ${message}`,
+    );
+
+    this.emit("voiceSttFailureAlert", record);
+    this.emit("errorCaptured", record);
+    return errorId;
+  }
+
+  recordVoiceAgentJoinFailureAlert(info: {
+    sessionId: string;
+    roomName: string;
+    agentIdentity: string;
+    reason: string;
+    tenantId?: string;
+    namespace?: string;
+  }): string {
+    const errorId = `voice_join_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const timestamp = new Date().toISOString();
+    const scope = this.normalizeScope({
+      tenantId: info.tenantId,
+      namespace: info.namespace,
+    });
+
+    const message = `Voice agent '${info.agentIdentity}' failed to join room '${info.roomName}' for session ${info.sessionId}: ${info.reason}`;
+
+    const record: CapturedErrorRecord = {
+      id: errorId,
+      timestamp,
+      message,
+      level: "error",
+      tenantId: scope.tenantId,
+      namespace: scope.namespace,
+      scopeKey: scope.scopeKey,
+      context: {
+        alert: "CRUCIBLE_VOICE_AGENT_JOIN_FAILURE_ALERT",
+        sessionId: info.sessionId,
+        component: "VoiceAgent",
+        extra: {
+          roomName: info.roomName,
+          agentIdentity: info.agentIdentity,
+          reason: info.reason,
+        },
+      },
+      breadcrumbs: [...this.breadcrumbs],
+    };
+
+    const scoped = this.getScopeBucket(scope);
+    this.globalBucket.totalErrorsCount += 1;
+    this.globalBucket.recentErrors.push(record);
+    scoped.bucket.totalErrorsCount += 1;
+    scoped.bucket.recentErrors.push(record);
+
+    logger.error(
+      {
+        errorId,
+        alert: "CRUCIBLE_VOICE_AGENT_JOIN_FAILURE_ALERT",
+        sessionId: info.sessionId,
+        roomName: info.roomName,
+        agentIdentity: info.agentIdentity,
+      },
+      `[Voice Agent Join Alert] ${message}`,
+    );
+
+    this.emit("voiceAgentJoinFailureAlert", record);
+    this.emit("errorCaptured", record);
+    return errorId;
+  }
+
+  recordLiveKitUnreachableAlert(info: {
+    sessionId?: string;
+    wsUrl?: string;
+    httpUrl?: string;
+    reason: string;
+    tenantId?: string;
+    namespace?: string;
+  }): string {
+    const errorId = `lk_unreachable_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const timestamp = new Date().toISOString();
+    const scope = this.normalizeScope({
+      tenantId: info.tenantId,
+      namespace: info.namespace,
+    });
+
+    const message = `Self-hosted LiveKit server unreachable (${info.httpUrl || info.wsUrl || "http://127.0.0.1:7880"}): ${info.reason}`;
+
+    const record: CapturedErrorRecord = {
+      id: errorId,
+      timestamp,
+      message,
+      level: "warning",
+      tenantId: scope.tenantId,
+      namespace: scope.namespace,
+      scopeKey: scope.scopeKey,
+      context: {
+        alert: "CRUCIBLE_LIVEKIT_SERVER_UNREACHABLE_ALERT",
+        sessionId: info.sessionId,
+        component: "LiveKitServer",
+        extra: {
+          wsUrl: info.wsUrl,
+          httpUrl: info.httpUrl,
+          reason: info.reason,
+        },
+      },
+      breadcrumbs: [...this.breadcrumbs],
+    };
+
+    const scoped = this.getScopeBucket(scope);
+    this.globalBucket.totalErrorsCount += 1;
+    this.globalBucket.recentErrors.push(record);
+    scoped.bucket.totalErrorsCount += 1;
+    scoped.bucket.recentErrors.push(record);
+
+    logger.warn(
+      {
+        errorId,
+        alert: "CRUCIBLE_LIVEKIT_SERVER_UNREACHABLE_ALERT",
+        sessionId: info.sessionId,
+        wsUrl: info.wsUrl,
+        httpUrl: info.httpUrl,
+      },
+      `[LiveKit Server Alert] ${message}`,
+    );
+
+    this.emit("livekitUnreachableAlert", record);
+    this.emit("errorCaptured", record);
+    return errorId;
+  }
+
   getMetrics(scope?: {
     tenantId?: string;
     namespace?: string;

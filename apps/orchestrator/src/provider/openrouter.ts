@@ -15,6 +15,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logger } from "../observability/logger";
 import { captureAgentError } from "../observability/error-reporter";
+import { getCircuitBreakerRegistry } from "../resilience/circuit-breaker";
 
 function resolveApiKey(explicitKey?: string): string {
   if (explicitKey) return explicitKey;
@@ -100,15 +101,18 @@ export class OpenRouterProvider implements ModelProvider {
       "Dispatching model completion request",
     );
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "HTTP-Referer": this.siteUrl,
-        "X-Title": this.siteName,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+    const breaker = getCircuitBreakerRegistry().getOrCreate("openrouter_llm");
+    const response = await breaker.execute(async () => {
+      return fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "HTTP-Referer": this.siteUrl,
+          "X-Title": this.siteName,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
     });
 
     if (!response.ok) {

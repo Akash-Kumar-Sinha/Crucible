@@ -31,8 +31,12 @@ export default function LandingPage() {
         document
           .getElementById("about")
           ?.scrollIntoView({ behavior: "smooth" });
-      } else if (q.includes("workspace") || q.includes("app")) {
-        router.push("/workspace");
+      } else if (
+        q.includes("session") ||
+        q.includes("workspace") ||
+        q.includes("app")
+      ) {
+        router.push("/workspace/session");
       } else if (q.includes("metric")) {
         router.push("/metrics");
       }
@@ -71,7 +75,7 @@ export default function LandingPage() {
                     Open the harness and run your first session.
                   </h2>
                   <p className="mt-3 text-sm text-white/45">
-                    Search the surface or jump straight into the workspace.
+                    Search the surface or jump straight into the agent session.
                   </p>
                 </div>
 
@@ -93,9 +97,9 @@ export default function LandingPage() {
                     type="button"
                     size="lg"
                     className="gap-2"
-                    onClick={() => router.push("/workspace")}
+                    onClick={() => router.push("/workspace/session")}
                   >
-                    Enter Workspace
+                    Enter Session
                     <ArrowUpRight className="h-4 w-4" />
                   </Button>
                 </div>

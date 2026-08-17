@@ -16,6 +16,12 @@
     "paths": {
       "@crucible/shared-schemas": ["packages/shared-schemas/src/index.ts"],
       "@crucible/shared-schemas/*": ["packages/shared-schemas/src/*"],
+      "@crucible/proto-types": ["packages/proto-types/src/index.ts"],
+      "@crucible/proto-types/*": ["packages/proto-types/src/*"],
+      "@crucible/sdk": ["packages/sdk/src/index.ts"],
+      "@crucible/sdk/*": ["packages/sdk/src/*"],
+      "@crucible/cli": ["apps/cli/src/index.ts"],
+      "@crucible/cli/*": ["apps/cli/src/*"],
       "@crucible/orchestrator": ["apps/orchestrator/src/index.ts"],
       "@crucible/orchestrator/*": ["apps/orchestrator/src/*"]
     }

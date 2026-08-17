@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardAction,
   CardContent,
 } from "@/components/ui/card";
 import { captureClientError } from "@/lib/error-reporter";
@@ -70,22 +71,22 @@ export function ModelUsagePanel({
       data-testid="model-usage-panel"
     >
       <CardHeader className="border-b border-white/8 pb-3 bg-zinc-900/60">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-zinc-400" />
-            <CardTitle className="text-sm font-semibold text-white tracking-wide">
-              Model Strategy Distribution
-            </CardTitle>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-zinc-400">Total Calls:</span>
-            <span className="text-zinc-200 font-bold">{totalRequests}</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-zinc-400" />
+          <CardTitle className="text-sm font-semibold text-white tracking-wide">
+            Model Strategy Distribution
+          </CardTitle>
         </div>
         <CardDescription className="text-xs text-zinc-400 font-sans mt-0.5">
           Per-model request volume, latency profiles, and failure rates across
           OpenRouter gateway
         </CardDescription>
+        <CardAction>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-zinc-400">Total Calls:</span>
+            <span className="text-zinc-200 font-bold">{totalRequests}</span>
+          </div>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="p-4 space-y-3">

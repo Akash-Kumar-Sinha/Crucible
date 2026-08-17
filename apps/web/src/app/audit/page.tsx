@@ -110,9 +110,9 @@ export default function AuditLogPage() {
                 className="h-4 bg-white/10 mx-1"
               />
               <Link
-                href="/workspace"
+                href="/workspace/session"
                 className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
-                title="Back to Workspace"
+                title="Back to Session"
               >
                 <ArrowLeft size={14} />
               </Link>

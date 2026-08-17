@@ -29,13 +29,13 @@ export const NotchSection = () => {
         {
           id: "go",
           label: "Go",
-          defaultValue: "workspace",
+          defaultValue: "session",
           options: [
-            { id: "workspace", label: "Workspace" },
+            { id: "session", label: "Session" },
             { id: "metrics", label: "Metrics" },
           ],
           onChange: (optionId) => {
-            if (optionId === "workspace") router.push("/workspace");
+            if (optionId === "session") router.push("/workspace/session");
             if (optionId === "metrics") router.push("/metrics");
           },
         },

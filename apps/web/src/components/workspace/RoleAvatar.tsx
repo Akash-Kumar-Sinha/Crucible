@@ -12,12 +12,12 @@ import {
 } from "lucide-react";
 
 export interface RoleAvatarProps {
-  role:
+  role?:
     "coder" | "test_writer" | "bug_hunter" | "bug_fixer" | "general" | string;
   sessionId?: string;
   model?: string;
   active?: boolean;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | number;
   showLink?: boolean;
 }
 
@@ -65,7 +65,7 @@ const roleConfig: Record<
     textClass: "text-amber-300",
   },
   general: {
-    label: "General",
+    label: "Agent",
     icon: Bot,
     accentColor: "zinc",
     borderClass: "border-white/10",
@@ -75,15 +75,24 @@ const roleConfig: Record<
 };
 
 export function RoleAvatar({
-  role,
+  role = "general",
   sessionId,
   model,
   active = false,
   size = "md",
   showLink = true,
 }: RoleAvatarProps) {
-  const cfg = roleConfig[role] || roleConfig.general;
+  const cfg = (role && roleConfig[role]) || roleConfig.general;
   const Icon = cfg.icon;
+
+  const normalizedSize: "sm" | "md" | "lg" =
+    typeof size === "number"
+      ? size <= 20
+        ? "sm"
+        : size <= 32
+          ? "md"
+          : "lg"
+      : size;
 
   const iconSizes = {
     sm: 12,
@@ -100,13 +109,13 @@ export function RoleAvatar({
   return (
     <div
       className={`inline-flex items-center gap-1.5 rounded-lg border font-mono transition-all select-none ${
-        containerPadding[size]
+        containerPadding[normalizedSize]
       } ${cfg.bgClass} ${cfg.borderClass} ${cfg.textClass} ${
         active ? "shadow-sm shadow-black/40" : "opacity-80"
       }`}
     >
       <div className="relative flex items-center justify-center">
-        <Icon size={iconSizes[size]} className={cfg.textClass} />
+        <Icon size={iconSizes[normalizedSize]} className={cfg.textClass} />
         {active && (
           <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         )}

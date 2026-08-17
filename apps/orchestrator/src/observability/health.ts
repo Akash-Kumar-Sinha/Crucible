@@ -61,6 +61,12 @@ export interface ReadinessCheckOptions {
     message?: string;
     error?: string;
   }>;
+  checkLiveKit?: () => Promise<{
+    ok: boolean;
+    latencyMs: number;
+    status?: number;
+    error?: string;
+  }>;
   timeoutMs?: number;
 }
 
@@ -489,6 +495,69 @@ export async function performReadinessCheck(
       latencyMs: Math.round(performance.now() - tQueue),
       message: err.message,
     };
+  }
+
+  // 11. Self-Hosted LiveKit Server Health Check
+  const checkLiveKitFn =
+    options.checkLiveKit ||
+    (async () => {
+      const { LiveKitRoomManager } =
+        await import("../voice/livekit-room-manager");
+      const roomMgr = new LiveKitRoomManager();
+      const res = await roomMgr.checkServerLiveness(1000);
+      return {
+        ok: res.reachable,
+        latencyMs: res.latencyMs,
+        status: res.status,
+        error: res.error,
+      };
+    });
+
+  const tLk = performance.now();
+  try {
+    const lkHealth = await checkLiveKitFn();
+    checks["livekit_server"] = {
+      status: lkHealth.ok ? "ok" : "degraded",
+      latencyMs: lkHealth.latencyMs ?? Math.round(performance.now() - tLk),
+      message: lkHealth.ok
+        ? "LiveKit SFU server reachable"
+        : lkHealth.error || "LiveKit server offline or unreachable",
+    };
+  } catch (err: any) {
+    checks["livekit_server"] = {
+      status: "degraded",
+      latencyMs: Math.round(performance.now() - tLk),
+      message: err.message,
+    };
+  }
+
+  // 12. Circuit Breakers Status Probe
+  try {
+    const { getCircuitBreakerRegistry } =
+      await import("../resilience/circuit-breaker");
+    const cbRegistry = getCircuitBreakerRegistry();
+    const openBreakers = cbRegistry.getAll().filter((b) => b.isOpen());
+    const hasOpenBreakers = openBreakers.length > 0;
+
+    checks["circuit_breakers"] = {
+      status: hasOpenBreakers ? "degraded" : "ok",
+      latencyMs: 0,
+      message: hasOpenBreakers
+        ? `Open breakers: ${openBreakers.map((b) => b.name).join(", ")}`
+        : "All circuit breakers closed and operational",
+      details: cbRegistry.getMetricsSummary(),
+    };
+
+    if (hasOpenBreakers) {
+      const coreTripped = openBreakers.some(
+        (b) => b.name === "openrouter_llm" || b.name === "executor_core",
+      );
+      if (coreTripped) {
+        overallHealthy = false;
+      }
+    }
+  } catch {
+    // Non-blocking
   }
 
   const response: HealthCheckResponse = {

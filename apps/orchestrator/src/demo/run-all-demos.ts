@@ -55,11 +55,6 @@ const demos: DemoSuiteItem[] = [
     ],
   },
   {
-    name: "Cross-Session Bus & Synthetic Observation Ingestion",
-    command: "bun",
-    args: ["apps/orchestrator/src/demo/verify-cross-session-communication.ts"],
-  },
-  {
     name: "Per-Session Model Selection & Dispatch Tagging",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-per-session-model-selection.ts"],
@@ -68,11 +63,6 @@ const demos: DemoSuiteItem[] = [
     name: "Agent Roles & Guardrail Security Enforcement",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-agent-roles-and-guardrails.ts"],
-  },
-  {
-    name: "Multi-Agent Squad 4-Stage Pipeline & Stall Timeout Alert",
-    command: "bun",
-    args: ["apps/orchestrator/src/demo/verify-squad-stages-and-timeout.ts"],
   },
   {
     name: "Bug Hunter Air-Gapped Egress & Cryptographic Audit Trail",
@@ -88,6 +78,30 @@ const demos: DemoSuiteItem[] = [
     name: "Bug Hunter Audit Log Viewer & Hash Chain Sync",
     command: "bun",
     args: ["apps/orchestrator/src/demo/verify-audit-log-viewer-sync.ts"],
+  },
+  {
+    name: "Self-Hosted LiveKit Real-Time Voice Command Interface",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-voice-interface.ts"],
+  },
+  {
+    name: "Headless CLI & SDK Feature Parity (Roles, Audit & Metrics)",
+    command: "bun",
+    args: ["apps/orchestrator/src/demo/verify-cli-feature-parity.ts"],
+  },
+  {
+    name: "Chaos Circuit Breaker & Multi-Session Rate Limiting",
+    command: "bun",
+    args: [
+      "apps/orchestrator/src/demo/verify-resilience-chaos-and-ratelimit.ts",
+    ],
+  },
+  {
+    name: "Settings API Key Generation, SDK/CLI & Resilience Banner",
+    command: "bun",
+    args: [
+      "apps/orchestrator/src/demo/verify-settings-key-and-resilience-banner.ts",
+    ],
   },
   {
     name: "Rust Sandboxed Process Execution & Isolation Engine",

@@ -59,9 +59,9 @@ export const HeroSection = () => {
           <Button
             type="button"
             size="lg"
-            onClick={() => router.push("/workspace")}
+            onClick={() => router.push("/workspace/session")}
           >
-            Launch Workspace
+            Launch Session
           </Button>
           <Button
             type="button"

@@ -11,23 +11,15 @@ import { LiveOutput } from "@/components/workspace/LiveOutput";
 import { GuardrailApproval } from "@/components/workspace/GuardrailApproval";
 import { SandboxInfoPanel } from "@/components/workspace/SandboxInfoPanel";
 import { QueuePositionBadge } from "@/components/status/QueuePositionBadge";
-import { RoleModelPicker } from "@/components/workspace/RoleModelPicker";
-import { InterSessionFeed } from "@/components/workspace/InterSessionFeed";
 import { SessionStreamClient } from "@/api/stream-client";
 import {
   useSessionStore,
   type SessionStoreState,
 } from "@/stores/session-store";
-import {
-  PreviewToggle,
-  type PreviewLayoutMode,
-} from "@/components/workspace/PreviewToggle";
-import { LivePreviewPane } from "@/components/workspace/LivePreviewPane";
-import type { PreviewInfo } from "@/api/orchestrator-client";
 import { motion, AnimatePresence } from "motion/react";
 import {
   AlertCircle,
-  Radio,
+  Activity,
   Shield,
   ArrowRight,
   Loader2,
@@ -38,6 +30,7 @@ import { PromptInput } from "@/components/ui/prompt-input";
 import { Button } from "@/components/ui/button";
 import { Logo, CrucibleWordmark } from "@/components/Logo";
 import { captureClientError } from "@/lib/error-reporter";
+import { ResilienceStatusBanner } from "@/components/ResilienceStatusBanner";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -116,17 +109,10 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const [input, setInput] = React.useState("");
   const [selectedRole, setSelectedRole] = React.useState<string>("coder");
-  const [selectedModel, setSelectedModel] = React.useState<string>(
-    "anthropic/claude-3.5-sonnet",
-  );
+  const [selectedModel, setSelectedModel] =
+    React.useState<string>("openrouter/free");
   const [sending, setSending] = React.useState(false);
   const [showSandboxInfo, setShowSandboxInfo] = React.useState(false);
-  const [showInterSessionFeed, setShowInterSessionFeed] = React.useState(false);
-  const [previewLayout, setPreviewLayout] =
-    React.useState<PreviewLayoutMode>("chat");
-  const [previewInfo, setPreviewInfo] = React.useState<PreviewInfo | null>(
-    null,
-  );
   const [infraData, setInfraData] = React.useState<any>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -298,30 +284,6 @@ export function ChatWindow({
     };
   }, [session?.id]);
 
-  // Poll active preview server status
-  React.useEffect(() => {
-    if (!session?.id) return;
-    let isMounted = true;
-
-    const fetchPreview = async () => {
-      try {
-        const res = await orchestratorClient.getPreviewStatus(session.id);
-        if (isMounted) {
-          setPreviewInfo(res.preview);
-        }
-      } catch {
-        // ignore background poll errors
-      }
-    };
-
-    fetchPreview();
-    const interval = setInterval(fetchPreview, 3000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [session?.id]);
-
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const isAtBottomRef = React.useRef<boolean>(true);
   const [showScrollBottomBtn, setShowScrollBottomBtn] =
@@ -435,7 +397,8 @@ export function ChatWindow({
   if (!session) {
     return (
       <main className="flex-1 flex flex-col justify-between bg-zinc-950 h-full relative overflow-hidden">
-        {/* Topbar */}
+        {/* Topbar & Resilience Banner */}
+        <ResilienceStatusBanner />
         <header className="h-14 border-b border-white/8 flex items-center justify-between px-4 bg-zinc-950/90 backdrop-blur-md z-10 shrink-0">
           <div className="flex items-center gap-2">
             <SidebarTrigger className="-ml-1 text-zinc-400 hover:text-white" />
@@ -579,13 +542,7 @@ export function ChatWindow({
           </Questionnaire>
         </div>
 
-        <div className="max-w-3xl mx-auto w-full p-6 pt-0 z-10 space-y-3">
-          <RoleModelPicker
-            selectedRole={selectedRole}
-            selectedModel={selectedModel}
-            onRoleChange={setSelectedRole}
-            onModelChange={setSelectedModel}
-          />
+        <div className="max-w-3xl mx-auto w-full p-6 pt-0 z-10">
           <PromptInput
             value={input}
             onChange={setInput}
@@ -593,7 +550,20 @@ export function ChatWindow({
               void handleSubmit();
             }}
             isLoading={sending}
-            placeholder="Type a goal or command for the Crucible agent..."
+            placeholder="Type a goal or speak a voice command for the Crucible agent..."
+            disabled={sending}
+            selectedRole={selectedRole}
+            selectedModel={selectedModel}
+            onRoleChange={setSelectedRole}
+            onModelChange={setSelectedModel}
+            onTranscript={(transcriptText) => {
+              setInput((prev) =>
+                prev ? `${prev} ${transcriptText}` : transcriptText,
+              );
+            }}
+            onVoiceAutoSubmit={(transcriptText) => {
+              void handleSubmit(transcriptText);
+            }}
             className="w-full"
           />
         </div>
@@ -602,15 +572,6 @@ export function ChatWindow({
   }
 
   const contextMeta = session?.metadata?.contextWindow || undefined;
-  const squadMeta = session?.metadata?.squad as
-    | {
-        id?: string;
-        name?: string;
-        stage?: string;
-        statusLine?: string;
-        activeRole?: string;
-      }
-    | undefined;
   const currentRole =
     session?.role || (session?.metadata?.role as string) || "general";
   const _currentModel =
@@ -625,6 +586,9 @@ export function ChatWindow({
           : ""
       }`}
     >
+      {/* Upstream Circuit Breaker & Rate Limit Resilience Status Banner */}
+      <ResilienceStatusBanner />
+
       {/* Adversarial Hardened Sandbox & Audit Banner for Bug Hunter */}
       {isBugHunter && (
         <div className="bg-rose-950/60 border-b border-rose-500/30 px-4 sm:px-6 py-1.5 flex items-center justify-between text-xs font-mono text-rose-200 shrink-0">
@@ -701,36 +665,6 @@ export function ChatWindow({
             </div>
           )}
 
-          {/* Live Sandbox Preview Toggle */}
-          <PreviewToggle
-            mode={previewLayout}
-            onChange={(mode) => {
-              setPreviewLayout(mode);
-              if (
-                session?.id &&
-                (mode === "preview" || mode === "split") &&
-                (!previewInfo || previewInfo.status !== "ready")
-              ) {
-                void orchestratorClient
-                  .startPreview(session.id)
-                  .then(() => orchestratorClient.getPreviewStatus(session.id))
-                  .then((res) => setPreviewInfo(res.preview))
-                  .catch(() => {});
-              }
-            }}
-            active={!!previewInfo && previewInfo.status === "ready"}
-            status={previewInfo?.status}
-            onRestart={async () => {
-              if (session?.id) {
-                await orchestratorClient.startPreview(session.id);
-                const res = await orchestratorClient.getPreviewStatus(
-                  session.id,
-                );
-                setPreviewInfo(res.preview);
-              }
-            }}
-          />
-
           {/* Compact Icon Tool Buttons */}
           <div className="flex items-center gap-1 border-l border-white/8 pl-2">
             <Button
@@ -743,285 +677,218 @@ export function ChatWindow({
             >
               <Shield size={14} />
             </Button>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowInterSessionFeed(!showInterSessionFeed)}
-              className={`h-8 w-8 p-0 rounded-lg transition-colors ${
-                showInterSessionFeed
-                  ? "bg-sky-500/20 text-sky-300"
-                  : "text-zinc-400 hover:text-white hover:bg-white/5"
-              }`}
-              title="Cross-Session Feed & Bus"
-            >
-              <Radio size={14} />
-            </Button>
           </div>
         </div>
       </header>
 
-      {/* Squad Stage Status Line Banner */}
-      {squadMeta && (
-        <div className="bg-sky-950/40 border-b border-sky-500/20 px-4 sm:px-6 py-1.5 flex items-center justify-between text-xs font-mono shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-bold uppercase shrink-0">
-              Squad: {squadMeta.name || "Workflow"}
-            </span>
-            <span className="text-zinc-300 truncate">
-              {squadMeta.statusLine || `Stage: ${squadMeta.stage}`}
-            </span>
-          </div>
-          {squadMeta.stage && (
-            <span className="text-[10px] text-sky-400/80 uppercase font-semibold shrink-0 ml-2">
-              Stage: {squadMeta.stage}
-            </span>
-          )}
-        </div>
-      )}
+      {/* Main Workspace Chat Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* Messages Scroll Area */}
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-4 relative"
+        >
+          <Marker
+            variant="separator"
+            className="text-zinc-500 text-[11px] font-mono mb-4"
+          >
+            <MarkerIcon>
+              <Activity size={12} className="text-emerald-400" />
+            </MarkerIcon>
+            <MarkerContent>
+              Session Initialized • {session.tenantId || "default"} /{" "}
+              {session.namespace || "crucible"}
+            </MarkerContent>
+          </Marker>
 
-      {/* Main Workspace Area (Chat / Split / Preview) */}
-      {previewLayout === "preview" ? (
-        <div className="flex-1 overflow-hidden">
-          <LivePreviewPane
-            sessionId={session.id}
-            previewUrl={orchestratorClient.getPreviewUrl(session.id)}
-            previewInfo={previewInfo}
-            messages={messages}
-            onRestart={async () => {
-              await orchestratorClient.startPreview(session.id);
-              const res = await orchestratorClient.getPreviewStatus(session.id);
-              setPreviewInfo(res.preview);
-            }}
-            onClose={() => setPreviewLayout("chat")}
-          />
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-row overflow-hidden relative">
-          {/* Chat Column */}
-          <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-            {/* Messages Scroll Area */}
-            <div
-              ref={scrollContainerRef}
-              onScroll={handleScroll}
-              className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-4 relative"
-            >
+          {/* Compacted/Summarized Past Turns Indicator */}
+          {contextMeta?.isSummarized && (
+            <div className="my-3">
               <Marker
                 variant="separator"
-                className="text-zinc-500 text-[11px] font-mono mb-4"
+                className="text-zinc-400 text-[11px] font-mono mb-2"
               >
                 <MarkerIcon>
-                  <Radio size={12} className="text-emerald-400" />
+                  <Cpu size={12} className="text-sky-400" />
                 </MarkerIcon>
                 <MarkerContent>
-                  Session Initialized • {session.tenantId || "default"} /{" "}
-                  {session.namespace || "crucible"}
+                  Earlier turns summarized (
+                  {contextMeta.summarizedTurnCount || "multiple"} turns) to
+                  optimize context window
                 </MarkerContent>
               </Marker>
-
-              {/* Compacted/Summarized Past Turns Indicator */}
-              {contextMeta?.isSummarized && (
-                <div className="my-3">
-                  <Marker
-                    variant="separator"
-                    className="text-zinc-400 text-[11px] font-mono mb-2"
-                  >
-                    <MarkerIcon>
-                      <Cpu size={12} className="text-sky-400" />
-                    </MarkerIcon>
-                    <MarkerContent>
-                      Earlier turns summarized (
-                      {contextMeta.summarizedTurnCount || "multiple"} turns) to
-                      optimize context window
-                    </MarkerContent>
-                  </Marker>
-                  {contextMeta.runningSummary && (
-                    <Accordion className="w-full">
-                      <AccordionItem
-                        value="context-summary"
-                        className="rounded-lg border border-white/8 bg-black/60 shadow-sm"
-                      >
-                        <AccordionTrigger className="p-3 hover:bg-zinc-900/40 text-zinc-400 text-xs">
-                          <span className="font-mono text-[11px] text-zinc-300">
-                            View Active Context Memento (
-                            {contextMeta.summarizedTurnCount} turns)
-                          </span>
-                        </AccordionTrigger>
-                        <AccordionContent className="p-3 pt-0 text-xs font-mono text-zinc-400 whitespace-pre-wrap leading-relaxed">
-                          {contextMeta.runningSummary}
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
-                  )}
-                </div>
-              )}
-
-              {messages.map((message, index) => (
-                <MessageBubble
-                  key={`${message.role}-${message.toolCallId || message.name || message.content || "msg"}-${index}`}
-                  message={message}
-                  index={index}
-                />
-              ))}
-
-              {/* Guardrail Human Review Checkpoint Card */}
-              {effectiveStatus === "awaiting_human" && (
-                <GuardrailApproval
-                  sessionId={session.id}
-                  toolName={pendingTool?.name || "bash_exec"}
-                  toolCallId={pendingTool?.id}
-                  args={pendingTool?.arguments}
-                  policyReason="Irreversible Action Policy: Destructive filesystem or root command requires manual confirmation."
-                  onDecisionComplete={async () => {
-                    try {
-                      const refreshed = await orchestratorClient.getSession(
-                        session.id,
-                      );
-                      setStatus(toSessionStatus(refreshed.status));
-                    } catch (err) {
-                      captureClientError(err, {
-                        component: "ChatWindow",
-                        action: "refresh_after_guardrail_decision",
-                        sessionId: session.id,
-                      });
-                    }
-                  }}
-                />
-              )}
-
-              {/* Real-time Streaming Output Panel */}
-              <LiveOutput
-                streamingThought={streamingThought}
-                streamingTokens={streamingTokens}
-                activeToolCalls={activeToolCalls}
-                toolStdout={toolStdout}
-                toolStderr={toolStderr}
-                _isConnected={isStreamConnected}
-                status={effectiveStatus}
-                agentState={agentState}
-              />
-
-              {/* Queued Load Leveling Banner */}
-              <AnimatePresence>
-                {effectiveStatus === "queued" && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    className="my-3 w-fit"
-                  >
-                    <QueuePositionBadge
-                      position={infraData?.queue?.position ?? 1}
-                      backlogCount={infraData?.queue?.backlogCount ?? 1}
-                      activeConsumers={infraData?.queue?.activeConsumers ?? 2}
-                      estimatedWaitMs={infraData?.queue?.estimatedWaitMs ?? 0}
-                      status="queued"
-                      className="px-3 py-1.5 text-xs"
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Loading Indicator */}
-              <AnimatePresence>
-                {sending &&
-                  effectiveStatus !== "queued" &&
-                  !streamingTokens &&
-                  !toolStdout && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-950 border border-white/8 text-zinc-400 text-xs w-fit my-3 font-mono"
-                    >
-                      <Loader2
-                        size={13}
-                        className="animate-spin text-zinc-400"
-                      />
-                      <span>Reasoning & executing tools in sandbox...</span>
-                    </motion.div>
-                  )}
-              </AnimatePresence>
-
-              {/* Error Banner */}
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex items-center gap-2.5 p-4 rounded-lg bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs my-3"
+              {contextMeta.runningSummary && (
+                <Accordion
+                  defaultValue={[]}
+                  className="w-full rounded-lg border border-white/8 bg-black/60 shadow-sm"
                 >
-                  <AlertCircle size={15} className="text-rose-400 shrink-0" />
-                  <span>{error}</span>
-                </motion.div>
-              )}
-
-              {/* Floating scroll to latest button */}
-              {showScrollBottomBtn && (
-                <div className="sticky bottom-2 flex justify-center pointer-events-none z-20">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      isAtBottomRef.current = true;
-                      setShowScrollBottomBtn(false);
-                      scrollToBottom(true);
-                    }}
-                    className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white border border-white/10 shadow-lg text-xs font-mono backdrop-blur-md transition-all cursor-pointer"
+                  <AccordionItem
+                    value="context-summary"
+                    className="border-none"
                   >
-                    <ChevronDown size={14} />
-                    <span>Scroll to latest</span>
-                  </button>
-                </div>
+                    <AccordionTrigger className="p-3 hover:bg-zinc-900/40 text-zinc-400 text-xs">
+                      <span className="font-mono text-[11px] text-zinc-300">
+                        View Active Context Memento (
+                        {contextMeta.summarizedTurnCount} turns)
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="p-3 pt-0 text-xs font-mono text-zinc-400 whitespace-pre-wrap leading-relaxed">
+                      {contextMeta.runningSummary}
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               )}
-
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Bottom Input Area */}
-            <div className="p-6 pt-0 z-10 shrink-0">
-              <div className="max-w-3xl mx-auto w-full space-y-3">
-                <RoleModelPicker
-                  selectedRole={selectedRole}
-                  selectedModel={selectedModel}
-                  onRoleChange={setSelectedRole}
-                  onModelChange={setSelectedModel}
-                />
-                <PromptInput
-                  value={input}
-                  onChange={setInput}
-                  onSubmit={() => {
-                    void handleSubmit();
-                  }}
-                  isLoading={sending}
-                  placeholder="Type a goal or command for the Crucible agent..."
-                  disabled={sending}
-                  className="w-full"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Right Preview Column in Split Mode */}
-          {previewLayout === "split" && (
-            <div className="w-1/2 min-w-[360px] h-full overflow-hidden border-l border-white/8">
-              <LivePreviewPane
-                sessionId={session.id}
-                previewUrl={orchestratorClient.getPreviewUrl(session.id)}
-                previewInfo={previewInfo}
-                messages={messages}
-                onRestart={async () => {
-                  await orchestratorClient.startPreview(session.id);
-                  const res = await orchestratorClient.getPreviewStatus(
-                    session.id,
-                  );
-                  setPreviewInfo(res.preview);
-                }}
-                onClose={() => setPreviewLayout("chat")}
-              />
             </div>
           )}
+
+          {messages.map((message, index) => (
+            <MessageBubble
+              key={`${message.role}-${message.toolCallId || message.name || message.content || "msg"}-${index}`}
+              message={message}
+              index={index}
+            />
+          ))}
+
+          {/* Guardrail Human Review Checkpoint Card */}
+          {effectiveStatus === "awaiting_human" && (
+            <GuardrailApproval
+              sessionId={session.id}
+              toolName={pendingTool?.name || "bash_exec"}
+              toolCallId={pendingTool?.id}
+              args={pendingTool?.arguments}
+              policyReason="Irreversible Action Policy: Destructive filesystem or root command requires manual confirmation."
+              onDecisionComplete={async () => {
+                try {
+                  const refreshed = await orchestratorClient.getSession(
+                    session.id,
+                  );
+                  setStatus(toSessionStatus(refreshed.status));
+                } catch (err) {
+                  captureClientError(err, {
+                    component: "ChatWindow",
+                    action: "refresh_after_guardrail_decision",
+                    sessionId: session.id,
+                  });
+                }
+              }}
+            />
+          )}
+
+          {/* Real-time Streaming Output Panel */}
+          <LiveOutput
+            streamingThought={streamingThought}
+            streamingTokens={streamingTokens}
+            activeToolCalls={activeToolCalls}
+            toolStdout={toolStdout}
+            toolStderr={toolStderr}
+            _isConnected={isStreamConnected}
+            status={effectiveStatus}
+            agentState={agentState}
+          />
+
+          {/* Queued Load Leveling Banner */}
+          <AnimatePresence>
+            {effectiveStatus === "queued" && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="my-3 w-fit"
+              >
+                <QueuePositionBadge
+                  position={infraData?.queue?.position ?? 1}
+                  backlogCount={infraData?.queue?.backlogCount ?? 1}
+                  activeConsumers={infraData?.queue?.activeConsumers ?? 2}
+                  estimatedWaitMs={infraData?.queue?.estimatedWaitMs ?? 0}
+                  status="queued"
+                  className="px-3 py-1.5 text-xs"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Loading Indicator */}
+          <AnimatePresence>
+            {sending &&
+              effectiveStatus !== "queued" &&
+              !streamingTokens &&
+              !toolStdout && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-950 border border-white/8 text-zinc-400 text-xs w-fit my-3 font-mono"
+                >
+                  <Loader2 size={13} className="animate-spin text-zinc-400" />
+                  <span>Reasoning & executing tools in sandbox...</span>
+                </motion.div>
+              )}
+          </AnimatePresence>
+
+          {/* Error Banner */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex items-center gap-2.5 p-4 rounded-lg bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs my-3"
+            >
+              <AlertCircle size={15} className="text-rose-400 shrink-0" />
+              <span>{error}</span>
+            </motion.div>
+          )}
+
+          {/* Floating scroll to latest button */}
+          {showScrollBottomBtn && (
+            <div className="sticky bottom-2 flex justify-center pointer-events-none z-20">
+              <button
+                type="button"
+                onClick={() => {
+                  isAtBottomRef.current = true;
+                  setShowScrollBottomBtn(false);
+                  scrollToBottom(true);
+                }}
+                className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white border border-white/10 shadow-lg text-xs font-mono backdrop-blur-md transition-all cursor-pointer"
+              >
+                <ChevronDown size={14} />
+                <span>Scroll to latest</span>
+              </button>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
-      )}
+
+        {/* Bottom Input Area */}
+        <div className="p-6 pt-0 z-10 shrink-0">
+          <div className="max-w-3xl mx-auto w-full">
+            <PromptInput
+              value={input}
+              onChange={setInput}
+              onSubmit={() => {
+                void handleSubmit();
+              }}
+              isLoading={sending}
+              placeholder="Type a goal or speak a voice command for the Crucible agent..."
+              disabled={sending}
+              selectedRole={selectedRole}
+              selectedModel={selectedModel}
+              onRoleChange={setSelectedRole}
+              onModelChange={setSelectedModel}
+              sessionId={session.id}
+              onTranscript={(transcriptText) => {
+                setInput((prev) =>
+                  prev ? `${prev} ${transcriptText}` : transcriptText,
+                );
+              }}
+              onVoiceAutoSubmit={(transcriptText) => {
+                void handleSubmit(transcriptText);
+              }}
+              className="w-full"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Sandbox Isolation & Resource Budget Modal */}
       <SandboxInfoPanel
@@ -1029,18 +896,6 @@ export function ChatWindow({
         onClose={() => setShowSandboxInfo(false)}
         sessionId={session.id}
       />
-
-      {/* Live Cross-Session Feed Slide-over / Modal */}
-      {showInterSessionFeed && (
-        <div className="absolute right-4 bottom-20 z-40 w-96 max-w-[calc(100vw-2rem)] shadow-2xl">
-          <InterSessionFeed
-            sessions={session ? [session] : []}
-            activeSessionId={session.id}
-            isOpen={showInterSessionFeed}
-            onClose={() => setShowInterSessionFeed(false)}
-          />
-        </div>
-      )}
     </main>
   );
 }

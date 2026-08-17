@@ -16,7 +16,7 @@ export interface RoleModelPickerProps {
 
 export function RoleModelPicker({
   selectedRole = "coder",
-  selectedModel = "anthropic/claude-3.5-sonnet",
+  selectedModel = "openrouter/free",
   onRoleChange,
   onModelChange,
   className = "",

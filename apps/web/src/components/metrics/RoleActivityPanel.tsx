@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardAction,
   CardContent,
 } from "@/components/ui/card";
 import { captureClientError } from "@/lib/error-reporter";
@@ -122,24 +123,24 @@ export function RoleActivityPanel({
       data-testid="role-activity-panel"
     >
       <CardHeader className="border-b border-white/8 pb-3 bg-zinc-900/60">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bot size={16} className="text-zinc-400" />
-            <CardTitle className="text-sm font-semibold text-white tracking-wide">
-              Agent Roles & Cross-Session Traffic
-            </CardTitle>
-          </div>
+        <div className="flex items-center gap-2">
+          <Bot size={16} className="text-zinc-400" />
+          <CardTitle className="text-sm font-semibold text-white tracking-wide">
+            Agent Role Specialization & Workload
+          </CardTitle>
+        </div>
+        <CardDescription className="text-xs text-zinc-400 font-sans mt-0.5">
+          Workload distribution by agent specialization and tool execution
+          activity
+        </CardDescription>
+        <CardAction>
           <div className="flex items-center gap-2 text-xs">
             <span className="text-zinc-400">Cross-Bus:</span>
             <span className="text-zinc-200 font-bold">
               {totalCrossPublished} msgs
             </span>
           </div>
-        </div>
-        <CardDescription className="text-xs text-zinc-400 font-sans mt-0.5">
-          Workload distribution by agent specialization, fault probing rates,
-          and inter-session bus routing
-        </CardDescription>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">

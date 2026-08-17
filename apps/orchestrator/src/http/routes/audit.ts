@@ -3,6 +3,19 @@ import { getBugHunterAuditLogger } from "../../roles/bug-hunter-audit";
 import { getErrorReporter } from "../../observability/error-reporter";
 import { logger } from "../../observability/logger";
 
+function jsonResponse(data: any, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, X-Tenant-ID, X-Namespace, X-Crucible-Token",
+    },
+  });
+}
+
 /**
  * Repository pattern: Read-only REST route handler for the
  * Bug Hunter cryptographic audit trail and hash-chain verification.
@@ -28,7 +41,7 @@ export class AuditRouteHandler {
 
       const integrity = auditLogger.verifyIntegrity();
 
-      return Response.json({
+      return jsonResponse({
         status: "success",
         timestamp: new Date().toISOString(),
         records,
@@ -51,7 +64,7 @@ export class AuditRouteHandler {
         },
       );
 
-      return Response.json(
+      return jsonResponse(
         {
           status: "error",
           error: {
@@ -60,7 +73,7 @@ export class AuditRouteHandler {
             details: err?.message,
           },
         },
-        { status: 500 },
+        500,
       );
     }
   }
@@ -70,7 +83,7 @@ export class AuditRouteHandler {
       const auditLogger = getBugHunterAuditLogger();
       const integrity = auditLogger.verifyIntegrity();
 
-      return Response.json({
+      return jsonResponse({
         status: "success",
         timestamp: new Date().toISOString(),
         integrity,
@@ -91,7 +104,7 @@ export class AuditRouteHandler {
         },
       );
 
-      return Response.json(
+      return jsonResponse(
         {
           status: "error",
           error: {
@@ -100,7 +113,7 @@ export class AuditRouteHandler {
             details: err?.message,
           },
         },
-        { status: 500 },
+        500,
       );
     }
   }

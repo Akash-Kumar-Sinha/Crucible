@@ -2,21 +2,24 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import type { SessionSummary, TenantScope } from "@/api/orchestrator-client";
 import {
   Plus,
   Search,
-  Activity,
-  Layers,
-  ShieldAlert,
   MessageSquare,
+  Activity,
+  ShieldAlert,
+  Settings,
   MoreHorizontal,
-  Trash2,
   Copy,
   Check,
-  Settings,
+  Trash2,
+  Terminal,
+  Loader2,
 } from "lucide-react";
+import { useSessionStore } from "@/stores/session-store";
+import { orchestratorClient } from "@/api/orchestrator-client";
 import { Logo, CrucibleWordmark } from "@/components/Logo";
 import { SetupWizard } from "@/components/sidebar/SetupWizard";
 import {
@@ -24,14 +27,11 @@ import {
   useCommandPalette,
   type Command,
 } from "@/components/ui/command-palette";
-import { TenantSwitcher } from "@/components/sidebar/TenantSwitcher";
 import {
   SidebarHeader,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupLabel,
-  SidebarGroupAction,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -47,6 +47,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
 export interface SessionSidebarProps {
   sessions: SessionSummary[];
@@ -59,35 +60,68 @@ export interface SessionSidebarProps {
   onScopeChange?: (scope: TenantScope) => void;
 }
 
+const scrollbar = cn(
+  "[scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.12)_transparent]",
+  "[&::-webkit-scrollbar]:w-1",
+  "[&::-webkit-scrollbar-track]:bg-transparent",
+  "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10",
+  "hover:[&::-webkit-scrollbar-thumb]:bg-white/20",
+);
+
 export function SessionSidebar({
   sessions = [],
   activeSessionId,
   onCreateSession,
   onDeleteSession,
-  loading = false,
-  tenantId = "default",
+  loading: _loading = false,
+  tenantId: _tenantId = "default",
   namespace = "crucible",
   onScopeChange,
 }: SessionSidebarProps) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const pathname = usePathname();
   const [creating, setCreating] = React.useState(false);
-  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-  const [isSetupOpen, setIsSetupOpen] = React.useState(false);
-  const [searchQuery, setSearchQuery] = React.useState("");
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const { open: commandOpen, setOpen: setCommandOpen } = useCommandPalette();
+  const [isSetupOpen, setIsSetupOpen] = React.useState(false);
+  const activeRunningSessionIds = useSessionStore(
+    (s) => s.activeRunningSessionIds,
+  );
+  const setSessions = useSessionStore((s) => s.setSessions);
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      orchestratorClient
+        .listSessionsWithScope({ tenantId: _tenantId, namespace })
+        .then(setSessions)
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [_tenantId, namespace, setSessions]);
+
+  const parseTimestamp = (value: unknown): number => {
+    if (typeof value === "number" && !Number.isNaN(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return 0;
+  };
+
+  const sortedSessions = React.useMemo(() => {
+    return [...sessions].sort((a, b) => {
+      const timeB = parseTimestamp(b.updatedAt || b.createdAt);
+      const timeA = parseTimestamp(a.updatedAt || a.createdAt);
+      return timeB - timeA;
+    });
+  }, [sessions]);
 
   const handleCreate = async () => {
-    setCreating(true);
-    setErrorMessage(null);
+    if (creating) return;
     try {
+      setCreating(true);
       await onCreateSession();
-    } catch (err: any) {
-      setErrorMessage(
-        err?.message ||
-          "Failed to create session. Please check if 'make serve' is running on port 4000.",
-      );
     } finally {
       setCreating(false);
     }
@@ -100,62 +134,30 @@ export function SessionSidebar({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const filteredSessions = React.useMemo(() => {
-    const getTime = (val: any): number => {
-      if (!val) return 0;
-      if (typeof val === "number") return val;
-      if (val instanceof Date) return val.getTime();
-      return new Date(val).getTime() || 0;
-    };
-    return [...sessions]
-      .filter((s) => {
-        if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
-        return (
-          (s.title && s.title.toLowerCase().includes(q)) ||
-          s.id.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
-        const timeA = getTime(a.updatedAt || a.createdAt);
-        const timeB = getTime(b.updatedAt || b.createdAt);
-        if (timeB !== timeA) return timeB - timeA;
-        return b.id.localeCompare(a.id);
-      });
-  }, [sessions, searchQuery]);
-
   const commands: Command[] = [
     {
       id: "action-new-session",
       label: "New Agent Session",
-      description: "Initialize a new autonomous agent session",
+      description: "Create and initialize an autonomous session",
       group: "Actions",
       icon: <Plus size={16} />,
       onSelect: () => void handleCreate(),
     },
     {
-      id: "action-setup-wizard",
-      label: "Setup Wizard & Cluster Config",
-      description: "Configure multi-tenant isolation, Redis, and LLM backend",
-      group: "Actions",
-      icon: <Settings size={16} />,
-      onSelect: () => setIsSetupOpen(true),
+      id: "nav-session",
+      label: "Agent Session",
+      description: "Return to active conversational session",
+      group: "Navigation",
+      icon: <Terminal size={16} />,
+      onSelect: () => router.push("/workspace/session"),
     },
     {
       id: "nav-metrics",
-      label: "Metrics & Observability Dashboard",
-      description: "Explore W3C distributed traces, spans, and throughput",
+      label: "Metrics & Traces",
+      description: "View telemetry, performance spans, and token budgets",
       group: "Navigation",
       icon: <Activity size={16} />,
       onSelect: () => router.push("/metrics"),
-    },
-    {
-      id: "nav-squads",
-      label: "Multi-Agent Squads",
-      description: "Manage 4-stage automated pipelines",
-      group: "Navigation",
-      icon: <Layers size={16} />,
-      onSelect: () => router.push("/squads"),
     },
     {
       id: "nav-audit",
@@ -175,250 +177,236 @@ export function SessionSidebar({
     })),
   ];
 
+  const platformNavItems = [
+    {
+      label: "Session",
+      icon: MessageSquare,
+      href: "/workspace/session",
+      isActive: pathname.startsWith("/workspace/session"),
+    },
+    {
+      label: "Metrics",
+      icon: Activity,
+      href: "/metrics",
+      isActive: pathname.startsWith("/metrics"),
+    },
+    {
+      label: "Audit Log",
+      icon: ShieldAlert,
+      href: "/audit",
+      isActive: pathname.startsWith("/audit"),
+    },
+  ];
+
   return (
     <>
-      {/* 1. Header: Brand & Scope Switcher */}
-      <SidebarHeader className="border-b border-white/8 p-2 space-y-3 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:space-y-0 flex flex-col group-data-[collapsible=icon]:items-center">
+      <SidebarHeader className="border-b border-white/5 p-3 flex flex-col group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:items-center shrink-0">
         <Link
-          href="/workspace"
-          className="flex items-center gap-2.5 px-1 py-1 w-full group select-none text-decoration-none group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center"
+          href="/workspace/session"
+          className="flex items-center gap-2.5 px-1 py-0.5 w-full group select-none text-decoration-none group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center"
         >
-          <Logo className="w-7 h-7 shrink-0 text-white group-hover:scale-105 transition-transform" />
+          <Logo className="w-6 h-6 shrink-0 text-white group-hover:scale-105 transition-transform" />
           <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
-            <CrucibleWordmark className="text-sm" />
-            <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest leading-none">
-              Orchestrator
-            </span>
+            <CrucibleWordmark className="text-sm tracking-tight" />
           </div>
         </Link>
-
-
       </SidebarHeader>
 
-      {/* 2. Content: Actions, Platform Nav & Active Sessions */}
-      <SidebarContent className="p-2 space-y-2 group-data-[collapsible=icon]:p-2 group-data-[collapsible=icon]:space-y-2">
-        {/* Quick Actions */}
-        <SidebarGroup className="p-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:items-center">
-          <SidebarGroupLabel className="text-[10px] font-mono font-semibold uppercase tracking-wider text-zinc-500 px-2 group-data-[collapsible=icon]:hidden">
-            Quick Actions
-          </SidebarGroupLabel>
-          <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
-            <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-              <SidebarMenuButton
-                onClick={() => void handleCreate()}
-                disabled={creating}
-                tooltip="New Agent Session"
-                className="w-full justify-start gap-2.5 text-xs font-medium text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/8 rounded-lg group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
-              >
-                <Plus size={14} className="shrink-0 text-zinc-400" />
-                <span className="group-data-[collapsible=icon]:hidden">
-                  {creating ? "Creating..." : "New Agent Session"}
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+      <SidebarContent className="p-2 flex flex-col min-h-0 flex-1 overflow-hidden group-data-[collapsible=icon]:p-2">
+        {/* Top Static Group: Actions and Platform Views */}
+        <div className="space-y-3 shrink-0">
+          <SidebarGroup className="p-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:items-center">
+            <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
+              <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+                <SidebarMenuButton
+                  onClick={() => void handleCreate()}
+                  disabled={creating}
+                  tooltip="New Session"
+                  className="w-full justify-start gap-2.5 text-xs font-medium text-zinc-100 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
+                >
+                  <Plus size={14} className="shrink-0 text-zinc-300" />
+                  <span className="group-data-[collapsible=icon]:hidden">
+                    {creating ? "Creating..." : "New Session"}
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-            <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-              <SidebarMenuButton
-                onClick={() => setCommandOpen(true)}
-                tooltip="Search & Actions (⌘K)"
-                className="w-full justify-between text-xs text-zinc-400 hover:text-zinc-200 rounded-lg group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
-              >
-                <Search size={14} className="shrink-0 text-zinc-500" />
-                <span className="group-data-[collapsible=icon]:hidden flex-1 text-left">
-                  Search & Actions
-                </span>
-                <span className="rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[9px] font-mono text-zinc-400 group-data-[collapsible=icon]:hidden">
-                  ⌘K
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          {errorMessage && (
-            <div className="mt-2 px-2 py-1 text-[10px] text-rose-300 bg-rose-950/50 rounded-md border border-rose-500/30 group-data-[collapsible=icon]:hidden">
-              {errorMessage}
-            </div>
-          )}
-        </SidebarGroup>
+              <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+                <SidebarMenuButton
+                  onClick={() => setCommandOpen(true)}
+                  tooltip="Search (⌘K)"
+                  className="w-full justify-between text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 rounded-lg transition-colors group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
+                >
+                  <Search size={14} className="shrink-0 text-zinc-400" />
+                  <span className="group-data-[collapsible=icon]:hidden flex-1 text-left">
+                    Search
+                  </span>
+                  <span className="rounded border border-white/10 bg-white/5 px-1 py-0.5 text-[9px] font-mono text-zinc-400 group-data-[collapsible=icon]:hidden">
+                    ⌘K
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
 
-
-        {/* Active Sessions List (Hidden when sidebar is collapsed/closed) */}
-        <SidebarGroup className="flex-1 group-data-[collapsible=icon]:hidden p-0">
-          <div className="flex items-center justify-between px-2 py-1">
-            <SidebarGroupLabel className="text-[10px] font-mono font-semibold uppercase tracking-wider text-zinc-500 p-0">
-              Active Sessions ({sessions.length})
-            </SidebarGroupLabel>
-            <SidebarGroupAction
-              onClick={() => void handleCreate()}
-              title="New Session"
-            >
-              <Plus size={12} />
-            </SidebarGroupAction>
-          </div>
-
-          {sessions.length > 5 && (
-            <div className="px-2 py-1">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter sessions..."
-                className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-white/20"
-              />
-            </div>
-          )}
-
-          <SidebarMenu className="mt-1 space-y-0.5">
-            {filteredSessions.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-zinc-500 font-mono">
-                {searchQuery ? "No matching sessions" : "No active sessions"}
-              </div>
-            ) : (
-              filteredSessions.map((s) => {
-                const isActive = activeSessionId === s.id;
+          <SidebarGroup className="p-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:items-center">
+            <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:items-center">
+              {platformNavItems.map((item) => {
+                const Icon = item.icon;
                 return (
-                  <SidebarMenuItem key={s.id}>
+                  <SidebarMenuItem
+                    key={item.href}
+                    className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center"
+                  >
                     <SidebarMenuButton
-                      onClick={() => router.push(`/workspace/session/${s.id}`)}
-                      className={`gap-2 text-xs font-mono rounded-lg transition-colors ${
-                        isActive
-                          ? "bg-white/10 text-white font-medium shadow-sm"
+                      onClick={() => router.push(item.href)}
+                      tooltip={item.label}
+                      className={`gap-2.5 text-xs rounded-lg transition-colors group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center ${
+                        item.isActive
+                          ? "bg-white/10 text-white font-medium"
                           : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
                       }`}
                     >
-                      <MessageSquare
-                        size={13}
+                      <Icon
+                        size={14}
                         className={`shrink-0 ${
-                          isActive ? "text-white" : "text-zinc-500"
+                          item.isActive ? "text-white" : "text-zinc-400"
                         }`}
                       />
-                      <span className="truncate flex-1">
-                        {s.title || `Session ${s.id.slice(-6)}`}
+                      <span className="group-data-[collapsible=icon]:hidden">
+                        {item.label}
                       </span>
                     </SidebarMenuButton>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <SidebarMenuAction
-                            showOnHover
-                            className="text-zinc-500 hover:text-zinc-200"
-                          />
-                        }
-                      >
-                        <MoreHorizontal size={13} />
-                        <span className="sr-only">Session Options</span>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        className="w-44 rounded-lg bg-zinc-900 border-white/10 text-xs"
-                        side={isMobile ? "bottom" : "right"}
-                        align="start"
-                      >
-                        <DropdownMenuItem
-                          onClick={(e) => handleCopyId(s.id, e)}
-                          className="gap-2 cursor-pointer text-zinc-300 hover:text-white"
-                        >
-                          {copiedId === s.id ? (
-                            <Check size={13} className="text-emerald-400" />
-                          ) : (
-                            <Copy size={13} />
-                          )}
-                          <span>
-                            {copiedId === s.id ? "Copied ID!" : "Copy ID"}
-                          </span>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator className="bg-white/5" />
-                        <DropdownMenuItem
-                          onClick={async () => {
-                            await onDeleteSession(s.id);
-                          }}
-                          className="gap-2 cursor-pointer text-rose-400 hover:text-rose-300 hover:bg-rose-950/30"
-                        >
-                          <Trash2 size={13} />
-                          <span>Delete Session</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </SidebarMenuItem>
                 );
-              })
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        </div>
+
+        {/* Dedicated Independently Scrollable Recent Sessions Section */}
+        <SidebarGroup className="flex-1 min-h-0 flex flex-col group-data-[collapsible=icon]:hidden p-0 pt-2 border-t border-white/5 mt-1">
+          <div className="flex items-center justify-between px-2 py-1 shrink-0">
+            <span className="text-[10px] font-mono font-medium uppercase tracking-wider text-zinc-500">
+              Recent
+            </span>
+          </div>
+
+          <div
+            className={cn(
+              "flex-1 min-h-0 overflow-y-auto pr-1 mt-0.5 space-y-0.5",
+              scrollbar,
             )}
-          </SidebarMenu>
-        </SidebarGroup>
+          >
+            <SidebarMenu className="space-y-0.5">
+              {sortedSessions.length === 0 ? (
+                <div className="px-2 py-3 text-xs text-zinc-600 font-mono">
+                  No sessions yet
+                </div>
+              ) : (
+                sortedSessions.map((s) => {
+                  const isActive = activeSessionId === s.id;
+                  const isRunning =
+                    s.status === "running" ||
+                    s.status === "queued" ||
+                    Boolean(
+                      activeRunningSessionIds[s.id] &&
+                      activeRunningSessionIds[s.id].status === "running",
+                    );
+                  return (
+                    <SidebarMenuItem key={s.id}>
+                      <SidebarMenuButton
+                        onClick={() =>
+                          router.push(`/workspace/session/${s.id}`)
+                        }
+                        className={`gap-2 text-xs rounded-lg transition-colors ${
+                          isActive
+                            ? "bg-white/10 text-white font-medium shadow-sm"
+                            : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
+                        }`}
+                      >
+                        {isRunning ? (
+                          <Loader2
+                            size={13}
+                            className="shrink-0 animate-spin text-blue-400"
+                          />
+                        ) : (
+                          <MessageSquare
+                            size={13}
+                            className="shrink-0 opacity-70"
+                          />
+                        )}
+                        <span className="truncate flex-1">
+                          {s.title || `Session ${s.id.slice(-6)}`}
+                        </span>
+                        {isRunning && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            active
+                          </span>
+                        )}
+                      </SidebarMenuButton>
 
-        {/* Platform Workflows */}
-        <SidebarGroup className="p-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:items-center">
-          <SidebarGroupLabel className="text-[10px] font-mono font-semibold uppercase tracking-wider text-zinc-500 px-2 group-data-[collapsible=icon]:hidden">
-            Platform Views
-          </SidebarGroupLabel>
-          <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
-            <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-              <SidebarMenuButton
-                onClick={() => router.push("/metrics")}
-                tooltip="Metrics & Traces"
-                className="gap-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 rounded-lg group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
-              >
-                <Activity size={14} className="shrink-0 text-zinc-500" />
-                <span className="group-data-[collapsible=icon]:hidden">
-                  Metrics & Traces
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-              <SidebarMenuButton
-                onClick={() => router.push("/squads")}
-                tooltip="Multi-Agent Squads"
-                className="gap-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 rounded-lg group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
-              >
-                <Layers size={14} className="shrink-0 text-zinc-500" />
-                <span className="group-data-[collapsible=icon]:hidden">
-                  Multi-Agent Squads
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-              <SidebarMenuButton
-                onClick={() => router.push("/audit")}
-                tooltip="Security Audit Log"
-                className="gap-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 rounded-lg group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
-              >
-                <ShieldAlert size={14} className="shrink-0 text-zinc-500" />
-                <span className="group-data-[collapsible=icon]:hidden">
-                  Security Audit Log
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-
-
-        </SidebarGroup>
-
-        <SidebarGroup className="p-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:items-center">
-          <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-                 <TenantSwitcher
-                   tenantId={tenantId}
-                   namespace={namespace}
-                   onScopeChange={(scope) => {
-                     onScopeChange?.(scope);
-                   }}
-                 />
-               </SidebarMenuItem>
-
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <SidebarMenuAction
+                              showOnHover
+                              className="text-zinc-500 hover:text-zinc-200"
+                            />
+                          }
+                        >
+                          <MoreHorizontal size={13} />
+                          <span className="sr-only">Session Options</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          className="w-40 rounded-lg bg-zinc-900 border-white/10 text-xs"
+                          side={isMobile ? "bottom" : "right"}
+                          align="start"
+                        >
+                          <DropdownMenuItem
+                            onClick={(e) => handleCopyId(s.id, e)}
+                            className="gap-2 cursor-pointer text-zinc-300 hover:text-white"
+                          >
+                            {copiedId === s.id ? (
+                              <Check size={13} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={13} />
+                            )}
+                            <span>
+                              {copiedId === s.id ? "Copied ID" : "Copy ID"}
+                            </span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-white/5" />
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              await onDeleteSession(s.id);
+                            }}
+                            className="gap-2 cursor-pointer text-rose-400 hover:text-rose-300 hover:bg-rose-950/30"
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete Session</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  );
+                })
+              )}
+            </SidebarMenu>
+          </div>
         </SidebarGroup>
       </SidebarContent>
 
-      {/* 3. Footer: User / Setup Launcher */}
-      <SidebarFooter className="border-t border-white/8 p-2 flex flex-col group-data-[collapsible=icon]:items-center">
+      <SidebarFooter className="border-t border-white/5 p-2 flex flex-col group-data-[collapsible=icon]:items-center shrink-0">
         <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
           <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
             <SidebarMenuButton
               onClick={() => setIsSetupOpen(true)}
               tooltip="Cluster Settings"
-              className="gap-2.5 text-xs text-zinc-400 hover:text-zinc-200 rounded-lg p-2 group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center"
+              className="gap-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 rounded-lg p-2 group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center flex items-center transition-colors"
             >
-              <Avatar className="h-6 w-6 rounded-md border border-white/10 shrink-0">
-                <AvatarFallback className="bg-zinc-800 text-[10px] text-zinc-300">
+              <Avatar className="h-5 w-5 rounded-md border border-white/10 shrink-0">
+                <AvatarFallback className="bg-zinc-800 text-[9px] font-mono text-zinc-300">
                   CR
                 </AvatarFallback>
               </Avatar>
@@ -445,7 +433,6 @@ export function SessionSidebar({
         open={commandOpen}
         onClose={() => setCommandOpen(false)}
         commands={commands}
-        placeholder="Search sessions and actions..."
       />
 
       <SetupWizard

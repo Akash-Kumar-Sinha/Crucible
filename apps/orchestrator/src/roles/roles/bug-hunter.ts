@@ -5,7 +5,7 @@ export const bugHunterRole: AgentRole = {
   name: "Bug Hunter",
   description:
     "White-hat security and fault auditor specialized in static code analysis, vulnerability probing, and edge-case fuzzing with read-only sandbox isolation.",
-  defaultModel: "deepseek/deepseek-chat",
+  defaultModel: "openrouter/free",
   allowedTools: ["read_file", "bash_exec", "calculator", "get_current_time"],
   readOnly: true,
   tagColor: "rose",

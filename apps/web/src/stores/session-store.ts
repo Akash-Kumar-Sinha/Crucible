@@ -30,6 +30,12 @@ export interface SessionStoreState {
   toolStderr: string;
   isStreamConnected: boolean;
 
+  // Multi-session background running tracking
+  activeRunningSessionIds: Record<
+    string,
+    { startedAt: number; status: SessionStatus }
+  >;
+
   // Actions
   setCurrentSessionId: (id: string | null) => void;
   setCurrentSession: (session: SessionDetail | null) => void;
@@ -43,6 +49,9 @@ export interface SessionStoreState {
   setSending: (isSending: boolean) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
+  markSessionRunning: (id: string, status?: SessionStatus) => void;
+  markSessionCompleted: (id: string, status?: SessionStatus) => void;
+  isSessionRunning: (id: string) => boolean;
 
   // Streaming Actions
   setStreamingThought: (thought: string) => void;
@@ -56,7 +65,7 @@ export interface SessionStoreState {
   reset: () => void;
 }
 
-export const useSessionStore = create<SessionStoreState>((set) => ({
+export const useSessionStore = create<SessionStoreState>((set, get) => ({
   currentSessionId: null,
   currentSession: null,
   sessions: [],
@@ -73,6 +82,8 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
   toolStderr: "",
   isStreamConnected: false,
 
+  activeRunningSessionIds: {},
+
   setCurrentSessionId: (currentSessionId) => set({ currentSessionId }),
   setCurrentSession: (currentSession) =>
     set({
@@ -86,6 +97,15 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       if (val instanceof Date) return val.getTime();
       return new Date(val).getTime() || 0;
     };
+
+    const nextRunning = { ...get().activeRunningSessionIds };
+    // Synchronize and prune completed sessions from active running map
+    sessions.forEach((s) => {
+      if (s.status !== "running" && s.status !== "queued") {
+        delete nextRunning[s.id];
+      }
+    });
+
     return set({
       sessions: [...sessions].sort((a, b) => {
         const timeA = getTime(a.updatedAt || a.createdAt);
@@ -93,6 +113,7 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
         if (timeB !== timeA) return timeB - timeA;
         return b.id.localeCompare(a.id);
       }),
+      activeRunningSessionIds: nextRunning,
     });
   },
   addSessionToList: (session) =>
@@ -100,13 +121,18 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
       sessions: [session, ...prev.sessions.filter((s) => s.id !== session.id)],
     })),
   removeSessionFromList: (id) =>
-    set((prev) => ({
-      sessions: prev.sessions.filter((s) => s.id !== id),
-      currentSession:
-        prev.currentSession?.id === id ? null : prev.currentSession,
-      currentSessionId:
-        prev.currentSessionId === id ? null : prev.currentSessionId,
-    })),
+    set((prev) => {
+      const nextRunning = { ...prev.activeRunningSessionIds };
+      delete nextRunning[id];
+      return {
+        sessions: prev.sessions.filter((s) => s.id !== id),
+        currentSession:
+          prev.currentSession?.id === id ? null : prev.currentSession,
+        currentSessionId:
+          prev.currentSessionId === id ? null : prev.currentSessionId,
+        activeRunningSessionIds: nextRunning,
+      };
+    }),
   updateSessionTitle: (id, title) =>
     set((prev) => ({
       sessions: prev.sessions.map((s) => (s.id === id ? { ...s, title } : s)),
@@ -157,9 +183,41 @@ export const useSessionStore = create<SessionStoreState>((set) => ({
         : null,
     })),
   setAgentState: (agentState) => set({ agentState }),
-  setSending: (isSending) => set({ isSending }),
+  setSending: (isSending) =>
+    set((prev) => {
+      const nextRunning = { ...prev.activeRunningSessionIds };
+      if (isSending && prev.currentSessionId) {
+        nextRunning[prev.currentSessionId] = {
+          startedAt: Date.now(),
+          status: "running",
+        };
+      } else if (!isSending && prev.currentSessionId) {
+        delete nextRunning[prev.currentSessionId];
+      }
+      return { isSending, activeRunningSessionIds: nextRunning };
+    }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
+  markSessionRunning: (id, status = "running") =>
+    set((prev) => ({
+      activeRunningSessionIds: {
+        ...prev.activeRunningSessionIds,
+        [id]: { startedAt: Date.now(), status },
+      },
+      status: prev.currentSessionId === id ? status : prev.status,
+    })),
+  markSessionCompleted: (id, status = "done") =>
+    set((prev) => {
+      const nextRunning = { ...prev.activeRunningSessionIds };
+      delete nextRunning[id];
+      return {
+        activeRunningSessionIds: nextRunning,
+        status: prev.currentSessionId === id ? status : prev.status,
+      };
+    }),
+  isSessionRunning: (id) => {
+    return Boolean(get().activeRunningSessionIds[id]);
+  },
 
   setStreamingThought: (streamingThought) => set({ streamingThought }),
   appendStreamingThought: (chunk) =>

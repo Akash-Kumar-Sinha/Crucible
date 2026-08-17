@@ -36,10 +36,11 @@ import { GuardrailRouteHandler } from "./routes/guardrails";
 import { InfraStatusRouteHandler } from "./routes/infra-status";
 import { ModelsRouteHandler } from "./routes/models";
 import { RolesRouteHandler } from "./routes/roles";
-import { InterSessionRouteHandler } from "./routes/inter-session";
-import { SquadsRouteHandler } from "./routes/squads";
+import { ToolsRouteHandler } from "./routes/tools";
 import { AuditRouteHandler } from "./routes/audit";
-import { PreviewProxyHandler } from "../preview/preview-proxy";
+import { VoiceRouteHandler } from "./routes/voice";
+import { ResilienceRouteHandler } from "./routes/resilience";
+import { getRateLimiter } from "../resilience/rate-limiter";
 
 export interface HttpServerOptions {
   port?: number;
@@ -56,10 +57,10 @@ export function createHttpRouter(
   const infraStatusHandler = new InfraStatusRouteHandler(sessionManager);
   const modelsHandler = new ModelsRouteHandler();
   const rolesHandler = new RolesRouteHandler();
-  const interSessionHandler = new InterSessionRouteHandler();
-  const squadsHandler = new SquadsRouteHandler(sessionManager);
+  const toolsHandler = new ToolsRouteHandler(sessionManager);
   const auditHandler = new AuditRouteHandler();
-  const previewProxyHandler = new PreviewProxyHandler();
+  const voiceHandler = new VoiceRouteHandler(sessionManager);
+  const resilienceHandler = new ResilienceRouteHandler();
 
   return async (
     req: Request,
@@ -76,7 +77,8 @@ export function createHttpRouter(
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Headers":
+            "Content-Type, Authorization, X-Tenant-ID, X-Namespace, X-Crucible-Token",
         },
       });
     }
@@ -143,6 +145,30 @@ export function createHttpRouter(
     // Normalize path to strip leading /api prefix if present
     const normalizedPath = pathname.replace(/^\/api/, "");
 
+    // Rate Limiting Interceptor on mutating routes (messages, dispatches, voice transcription)
+    if (
+      method === "POST" &&
+      (normalizedPath.startsWith("/sessions") ||
+        normalizedPath.startsWith("/voice"))
+    ) {
+      const sessionMatch = normalizedPath.match(/^\/sessions\/([^/]+)/);
+      const targetSessionId = sessionMatch ? sessionMatch[1] : undefined;
+      const tenantId = req.headers.get("X-Tenant-ID") || undefined;
+
+      const rateLimiter = getRateLimiter();
+      const rateLimitRes = rateLimiter.checkRateLimit({
+        sessionId: targetSessionId,
+        tenantId,
+      });
+
+      if (!rateLimitRes.allowed) {
+        return rateLimiter.create429Response(
+          rateLimitRes,
+          targetSessionId ? `session ${targetSessionId}` : "requests",
+        );
+      }
+    }
+
     // Route: /models
     if (normalizedPath === "/models" || normalizedPath === "/models/") {
       return modelsHandler.listModels();
@@ -159,22 +185,15 @@ export function createHttpRouter(
       return rolesHandler.getRole(roleMatch[1]);
     }
 
-    // Route: /inter-session/messages
-    if (
-      normalizedPath === "/inter-session/messages" ||
-      normalizedPath === "/inter-session/messages/" ||
-      normalizedPath === "/session-bus/messages" ||
-      normalizedPath === "/session-bus/messages/"
-    ) {
-      if (method === "POST") {
-        return interSessionHandler.publishMessage(req);
-      }
-      return interSessionHandler.getMessages(url);
+    // Route: /tools
+    if (normalizedPath === "/tools" || normalizedPath === "/tools/") {
+      return toolsHandler.listTools();
     }
 
-    // Route: /squads
-    if (normalizedPath.startsWith("/squads")) {
-      return squadsHandler.handle(req);
+    // Route: /tools/:name
+    const toolMatch = normalizedPath.match(/^\/tools\/([^/]+)$/);
+    if (toolMatch && method === "GET") {
+      return toolsHandler.getTool(toolMatch[1]);
     }
 
     // Route: /audit
@@ -194,6 +213,32 @@ export function createHttpRouter(
       normalizedPath === "/infra/status/"
     ) {
       return infraStatusHandler.getInfraStatus(req);
+    }
+
+    // Route: /resilience/status
+    if (
+      normalizedPath === "/resilience/status" ||
+      normalizedPath === "/resilience/status/" ||
+      normalizedPath === "/resilience" ||
+      normalizedPath === "/resilience/"
+    ) {
+      return resilienceHandler.getStatus();
+    }
+
+    // Route: /resilience/breakers/:name/reset
+    const resetBreakerMatch = normalizedPath.match(
+      /^\/resilience\/breakers\/([^/]+)\/reset$/,
+    );
+    if (resetBreakerMatch && method === "POST") {
+      return resilienceHandler.resetBreaker(resetBreakerMatch[1]);
+    }
+
+    // Route: /resilience/breakers/:name/trip
+    const tripBreakerMatch = normalizedPath.match(
+      /^\/resilience\/breakers\/([^/]+)\/trip$/,
+    );
+    if (tripBreakerMatch && method === "POST") {
+      return resilienceHandler.tripBreaker(tripBreakerMatch[1]);
     }
 
     // Route: /queue/metrics
@@ -333,17 +378,6 @@ export function createHttpRouter(
       }
     }
 
-    // Route: /sessions/:id/inter-session-messages or /sessions/:id/messages/inter-session
-    const interSessionMatch = normalizedPath.match(
-      /^\/sessions\/([^/]+)\/(?:messages\/inter-session|inter-session-messages)$/,
-    );
-    if (interSessionMatch) {
-      const sessionId = interSessionMatch[1];
-      if (method === "POST") {
-        return handler.sendInterSessionMessage(sessionId, req);
-      }
-    }
-
     // Route: /sessions/:id/approval and /sessions/:id/guardrails/approval
     const approvalMatch = normalizedPath.match(
       /^\/sessions\/([^/]+)\/(?:guardrails\/)?approval$/,
@@ -366,42 +400,6 @@ export function createHttpRouter(
       }
     }
 
-    // Route: /sessions/:id/preview
-    const sessionPreviewMatch = normalizedPath.match(
-      /^\/sessions\/([^/]+)\/preview$/,
-    );
-    if (sessionPreviewMatch) {
-      const sessionId = sessionPreviewMatch[1];
-      if (method === "GET") {
-        return previewProxyHandler.handleGetStatus(sessionId);
-      }
-      if (method === "POST") {
-        return previewProxyHandler.handleStart(req, sessionId);
-      }
-      if (method === "DELETE") {
-        return previewProxyHandler.handleStop(sessionId);
-      }
-    }
-
-    // Route: /preview/:sessionId/*
-    const previewProxyMatch = normalizedPath.match(
-      /^\/preview\/([^/]+)(?:\/(.*))?$/,
-    );
-    if (previewProxyMatch) {
-      const sessionId = previewProxyMatch[1];
-      const subpath = previewProxyMatch[2] || "";
-      if (subpath === "status" && method === "GET") {
-        return previewProxyHandler.handleGetStatus(sessionId);
-      }
-      if (subpath === "start" && method === "POST") {
-        return previewProxyHandler.handleStart(req, sessionId);
-      }
-      if (subpath === "stop" && method === "POST") {
-        return previewProxyHandler.handleStop(sessionId);
-      }
-      return previewProxyHandler.handleProxyRequest(req, sessionId, subpath);
-    }
-
     // Route: /sessions/:id/infra-status
     const sessionInfraMatch = normalizedPath.match(
       /^\/sessions\/([^/]+)\/infra-status$/,
@@ -411,6 +409,38 @@ export function createHttpRouter(
       if (method === "GET") {
         return infraStatusHandler.getInfraStatus(req, sessionId);
       }
+    }
+
+    // Route: /voice/status
+    if (
+      normalizedPath === "/voice/status" ||
+      normalizedPath === "/voice/status/"
+    ) {
+      return voiceHandler.getGlobalVoiceStatus();
+    }
+
+    // Route: /sessions/:id/voice/token
+    const voiceTokenMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/voice\/token$/,
+    );
+    if (voiceTokenMatch && method === "POST") {
+      return voiceHandler.createToken(voiceTokenMatch[1], req);
+    }
+
+    // Route: /sessions/:id/voice/transcribe
+    const voiceTranscribeMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/voice\/transcribe$/,
+    );
+    if (voiceTranscribeMatch && method === "POST") {
+      return voiceHandler.transcribeAudio(voiceTranscribeMatch[1], req);
+    }
+
+    // Route: /sessions/:id/voice/status
+    const voiceStatusMatch = normalizedPath.match(
+      /^\/sessions\/([^/]+)\/voice\/status$/,
+    );
+    if (voiceStatusMatch && method === "GET") {
+      return voiceHandler.getSessionVoiceStatus(voiceStatusMatch[1]);
     }
 
     // Route: /sessions/:id

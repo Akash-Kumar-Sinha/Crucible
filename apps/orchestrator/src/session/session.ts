@@ -16,17 +16,6 @@ import type {
 } from "./types";
 import { generateSessionTitle } from "./title-generator";
 import { tracer } from "../observability/otel";
-import {
-  getSessionBus,
-  type SessionBus,
-  type PublishResult,
-} from "./session-bus";
-import {
-  createInterSessionMessage,
-  type InterSessionMessage,
-  type InterSessionMessageType,
-} from "./inter-session-message";
-import { getSquadManager } from "../squad/squad-manager";
 
 export class Session extends EventEmitter {
   readonly id: SessionId;
@@ -43,8 +32,6 @@ export class Session extends EventEmitter {
   private status: SessionStatus = "idle";
   private turnCount = 0;
   private unsubscribeTransition?: () => void;
-  private sessionBus: SessionBus;
-  private unsubscribeBus?: () => void;
 
   constructor(config: SessionConfig = {}) {
     super();
@@ -80,10 +67,6 @@ export class Session extends EventEmitter {
       tenantId: this.tenantId,
       namespace: this.namespace,
     };
-    this.sessionBus = config.sessionBus || getSessionBus();
-    this.unsubscribeBus = this.sessionBus.subscribe(this.id, async (msg) => {
-      await this.handleIncomingInterSessionMessage(msg);
-    });
     let streamedThoughtInStep = false;
 
     this.loop = new AgentLoop({
@@ -237,22 +220,6 @@ export class Session extends EventEmitter {
 
   getSummary(): SessionSummary {
     const ctx = this.loop.getContext();
-    const meta = { ...this.metadata };
-    try {
-      const squad = getSquadManager().getSquadForSession(this.id);
-      if (squad) {
-        meta.squad = {
-          id: squad.id,
-          name: squad.name,
-          stage: squad.getStage(),
-          statusLine: squad.getStatusLine(),
-          activeRole: squad.getSummary().activeRole,
-        };
-      }
-    } catch (_err) {
-      // SquadManager not yet initialized in isolated unit tests
-    }
-
     return {
       id: this.id,
       title: this.title,
@@ -266,7 +233,7 @@ export class Session extends EventEmitter {
       turnCount: this.turnCount,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
-      metadata: meta,
+      metadata: { ...this.metadata },
     };
   }
 
@@ -467,61 +434,11 @@ export class Session extends EventEmitter {
     return this.loop.getState();
   }
 
-  async sendToSession(
-    targetSessionId: string,
-    payload: {
-      content?: string;
-      task?: string;
-      data?: Record<string, unknown>;
-      type?: InterSessionMessageType;
-      correlationId?: string;
-    },
-  ): Promise<PublishResult> {
-    const msg = createInterSessionMessage({
-      sourceSessionId: this.id,
-      targetSessionId,
-      content: payload.content,
-      task: payload.task,
-      data: payload.data,
-      type: payload.type,
-      correlationId: payload.correlationId,
-      tenantId: this.tenantId,
-      namespace: this.namespace,
-    });
-
-    return this.sessionBus.publish(msg);
-  }
-
-  private async handleIncomingInterSessionMessage(
-    msg: InterSessionMessage,
-  ): Promise<void> {
-    const preview =
-      msg.payload.content ||
-      msg.payload.task ||
-      (msg.payload.data ? JSON.stringify(msg.payload.data) : "");
-
-    const formattedContent = `[Inter-Session Message from ${msg.sourceSessionId} (${msg.type})]: ${preview}`;
-    const syntheticMessage: AgentMessage = {
-      role: "system",
-      content: formattedContent,
-    };
-
-    const currentMessages = this.getMessages();
-    this.loop.restoreMessages([...currentMessages, syntheticMessage]);
-
-    this.emit("interSessionMessage", msg);
-    this.emit("message", syntheticMessage);
-  }
-
   restoreMessages(messages: AgentMessage[]): void {
     this.loop.restoreMessages(messages);
   }
 
   dispose(): void {
-    if (this.unsubscribeBus) {
-      this.unsubscribeBus();
-      this.unsubscribeBus = undefined;
-    }
     if (this.unsubscribeTransition) {
       this.unsubscribeTransition();
       this.unsubscribeTransition = undefined;

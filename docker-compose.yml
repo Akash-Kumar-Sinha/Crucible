@@ -57,6 +57,27 @@ services:
     networks:
       - crucible_network
 
+  livekit:
+    image: livekit/livekit-server:v1.8.3
+    container_name: crucible-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./infra/docker/livekit-server.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "${LIVEKIT_PORT:-7880}:7880"
+      - "7881:7881"
+      - "3478:3478/udp"
+      - "50000-50020:50000-50020/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7880/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    networks:
+      - crucible_network
+
   orchestrator:
     build:
       context: .
@@ -72,6 +93,10 @@ services:
       REDIS_URL: redis://redis:6379
       CRUCIBLE_EXECUTOR: grpc
       CRUCIBLE_GRPC_ADDR: executor-grpc:50051
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_HTTP_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-crucible_dev_key}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-crucible_livekit_secret_key_32_chars_long}
     ports:
       - "${PORT:-4000}:4000"
     depends_on:
@@ -80,6 +105,8 @@ services:
       redis:
         condition: service_healthy
       executor-grpc:
+        condition: service_healthy
+      livekit:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/healthz || exit 1"]
@@ -101,6 +128,7 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:4000
       NEXT_PUBLIC_ORCHESTRATOR_URL: http://localhost:${PORT:-4000}
       NEXT_PUBLIC_STREAM_URL: http://localhost:${PORT:-4000}/stream
+      NEXT_PUBLIC_LIVEKIT_URL: ws://localhost:${LIVEKIT_PORT:-7880}
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:

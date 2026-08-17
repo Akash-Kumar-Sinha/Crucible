@@ -5,7 +5,7 @@ export const coderRole: AgentRole = {
   name: "Coder",
   description:
     "Autonomous software engineering specialist with full write and execution capabilities for building clean, type-safe features.",
-  defaultModel: "anthropic/claude-3.5-sonnet",
+  defaultModel: "openrouter/free",
   allowedTools: [
     "bash_exec",
     "read_file",

@@ -8,7 +8,7 @@ describe("Web UI Client Error Reporter", () => {
       {
         component: "ChatWindow",
         sessionId: "sess_web_123",
-        route: "/session/sess_web_123",
+        route: "/workspace/session/sess_web_123",
       },
     );
 

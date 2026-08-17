@@ -10,7 +10,7 @@ const NAV_LINKS = [
 ];
 
 const WORKSPACE_LINK = [
-  { label: "Workspace", href: "/workspace" },
+  { label: "Session", href: "/workspace/session" },
   { label: "Metrics", href: "/metrics" },
 ];
 

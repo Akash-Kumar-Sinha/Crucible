@@ -321,67 +321,6 @@ export class SessionRouteHandler {
     }
   }
 
-  async sendInterSessionMessage(
-    sessionId: string,
-    req: Request,
-  ): Promise<Response> {
-    const t0 = performance.now();
-    const session = this.sessionManager.get(sessionId);
-    if (!session) {
-      return this.errorResponse(
-        "SESSION_NOT_FOUND",
-        `Source session '${sessionId}' was not found.`,
-        404,
-        { sessionId },
-      );
-    }
-
-    try {
-      const body = await req.json();
-      if (!body.targetSessionId) {
-        return this.errorResponse(
-          "INVALID_TARGET_SESSION",
-          "A valid 'targetSessionId' must be specified in the request body.",
-          400,
-        );
-      }
-
-      const result = await session.sendToSession(body.targetSessionId, {
-        content: body.content,
-        task: body.task,
-        data: body.data,
-        type: body.type,
-        correlationId: body.correlationId,
-      });
-
-      const durationMs = Math.round(performance.now() - t0);
-      logger.info(
-        {
-          sourceSessionId: sessionId,
-          targetSessionId: body.targetSessionId,
-          delivered: result.delivered,
-          durationMs,
-        },
-        "Inter-session message publication evaluated",
-      );
-
-      return this.jsonResponse(
-        {
-          status: result.delivered ? "success" : "undeliverable",
-          data: result,
-        },
-        result.delivered ? 200 : 422,
-      );
-    } catch (err: any) {
-      return this.errorResponse(
-        "MESSAGE_PUBLISH_FAILED",
-        err.message || "Failed to publish inter-session message",
-        400,
-        { error: String(err) },
-      );
-    }
-  }
-
   async approveAction(sessionId: string, req: Request): Promise<Response> {
     const t0 = performance.now();
     const session = this.sessionManager.get(sessionId);

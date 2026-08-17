@@ -35,14 +35,15 @@ describe("Session Actor", () => {
       metadata: { userId: "user_123" },
     });
 
+    const expectedModel = process.env.OPENROUTER_MODEL || "openrouter/free";
     expect(session.id).toBe("custom_session_1");
     expect(session.title).toBe("Test Session");
-    expect(session.getModel()).toBe("openrouter/free");
+    expect(session.getModel()).toBe(expectedModel);
     expect(session.getRole()).toBe("general");
     expect(session.getMetadata().customMetadata).toEqual({
       role: "general",
       readOnly: false,
-      model: "openrouter/free",
+      model: expectedModel,
       tenantId: "default",
       namespace: "crucible",
       userId: "user_123",

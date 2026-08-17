@@ -76,9 +76,9 @@ export const Header = () => {
           <Button
             type="button"
             size="sm"
-            onClick={() => router.push("/workspace")}
+            onClick={() => router.push("/workspace/session")}
           >
-            Open Workspace
+            Open Session
           </Button>
         </div>
       </motion.div>

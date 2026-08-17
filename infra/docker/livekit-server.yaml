@@ -1,0 +1,20 @@
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50020
+  use_external_ip: false
+  enable_loopback_candidate: true
+
+turn:
+  enabled: false
+
+keys:
+  crucible_dev_key: crucible_livekit_secret_key_32_chars_long
+
+logging:
+  json: true
+  level: info

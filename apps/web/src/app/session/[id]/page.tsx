@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-export default function LegacySessionRedirectPage() {
+export default function SessionIdRedirectPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,7 +17,7 @@ export default function LegacySessionRedirectPage() {
         : `/workspace/session/${sessionId}`;
       router.replace(target);
     } else {
-      router.replace("/workspace");
+      router.replace("/workspace/session");
     }
   }, [sessionId, searchParams, router]);
 

@@ -41,7 +41,7 @@ const DEFAULT_ROLES: RoleInfo[] = [
     name: "Coder",
     description:
       "Autonomous software engineer with full workspace write permissions",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "openrouter/free",
     allowedTools: [
       "read_file",
       "write_file",
@@ -57,7 +57,7 @@ const DEFAULT_ROLES: RoleInfo[] = [
     name: "Test Writer",
     description:
       "Automated test engineer specializing in unit, integration, and property tests",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "openrouter/free",
     allowedTools: [
       "read_file",
       "write_file",
@@ -73,7 +73,7 @@ const DEFAULT_ROLES: RoleInfo[] = [
     name: "Bug Hunter",
     description:
       "Read-only white-hat security auditor running in an air-gapped sandbox",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "openrouter/free",
     allowedTools: ["read_file", "grep_search", "list_dir", "calculator"],
     readOnly: true,
     capabilities: [
@@ -87,7 +87,7 @@ const DEFAULT_ROLES: RoleInfo[] = [
     name: "Bug Fixer",
     description:
       "Targeted remediation specialist focused on fixing failing tests and security bugs",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "openrouter/free",
     allowedTools: [
       "read_file",
       "write_file",
@@ -103,7 +103,7 @@ const DEFAULT_ROLES: RoleInfo[] = [
     name: "General",
     description:
       "General-purpose agent orchestrator for conversational tasks and multi-tool execution",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "openrouter/free",
     allowedTools: [
       "read_file",
       "write_file",
@@ -145,7 +145,7 @@ export function RolePicker({
       id: selectedRole,
       name: selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1),
       description: "",
-      defaultModel: "anthropic/claude-3.5-sonnet",
+      defaultModel: "openrouter/free",
       allowedTools: [],
       readOnly: selectedRole === "bug_hunter",
       capabilities: [],

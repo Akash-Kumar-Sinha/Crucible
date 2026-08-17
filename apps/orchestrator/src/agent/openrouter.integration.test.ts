@@ -14,7 +14,11 @@ describe("OpenRouter Free Tier Integration", () => {
       return;
     }
 
-    const model = process.env.OPENROUTER_MODEL || "openrouter/free";
+    const configuredModel = process.env.OPENROUTER_MODEL;
+    const model =
+      configuredModel && configuredModel !== "mock"
+        ? configuredModel
+        : "openrouter/free";
 
     const provider = new OpenRouterProvider({
       apiKey,
@@ -53,12 +57,16 @@ describe("OpenRouter Free Tier Integration", () => {
       console.log("Final Response:", result.finalResponse);
     }
 
-    // Check if OpenRouter returned a daily rate limit / quota exhaustion or invalid auth in local test
+    // Check if OpenRouter returned a daily rate limit / quota exhaustion or upstream provider error in local test
     if (
       result.state === "error" &&
       result.error &&
       (result.error.includes("429") ||
+        result.error.includes("400") ||
         result.error.includes("401") ||
+        result.error.includes("403") ||
+        result.error.includes("502") ||
+        result.error.includes("503") ||
         result.error.includes("User not found") ||
         result.error.includes("Unauthorized") ||
         result.error.includes("Rate limit exceeded") ||

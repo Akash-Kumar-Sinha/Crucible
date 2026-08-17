@@ -97,21 +97,10 @@ export async function runDashboardVerification() {
     "[Workload Generation] Dispatching prompt turns across sessions...",
   );
   await session1.prompt("Build authentication middleware with use_tool");
-  await session2.prompt("Audit race conditions in session bus");
+  await session2.prompt("Audit race conditions in memory model");
   await session3.prompt("Write unit tests for authentication middleware");
 
-  // 5. Generate cross-session messaging
-  console.log("[Cross-Session Traffic] Publishing messages over SessionBus...");
-  await session1.sendToSession(session3.id, {
-    type: "delegation",
-    content: "Auth middleware ready for test coverage",
-  });
-  await session3.sendToSession(session2.id, {
-    type: "result",
-    content: "Unit test suite completed with 100% pass rate",
-  });
-
-  // 6. Query HTTP GET /metrics
+  // 5. Query HTTP GET /metrics
   console.log("\n[Metrics API] Fetching metrics from GET /metrics...");
   const res = await fetch(`http://127.0.0.1:${server.port}/metrics`);
   if (!res.ok) {
@@ -165,20 +154,8 @@ export async function runDashboardVerification() {
     }
   }
 
-  // Panel 4: Cross-Session Bus Telemetry
-  console.log("\n[Panel 4: CrossSessionMetrics]:");
-  console.log(
-    `  -> Total Published: ${data.crossSessionMetrics?.totalPublished}`,
-  );
-  console.log(
-    `  -> Total Delivered: ${data.crossSessionMetrics?.totalDelivered}`,
-  );
-  console.log(
-    `  -> Dead Letters:    ${data.crossSessionMetrics?.deadLetterCount}`,
-  );
-
-  // Panel 5: Global Latency & Tool Performance
-  console.log("\n[Panel 5: LatencyChart & ErrorRatePanel]:");
+  // Panel 4: Global Latency & Tool Performance
+  console.log("\n[Panel 4: LatencyChart & ErrorRatePanel]:");
   console.log(`  -> Global Tool Error Rate: ${data.globalToolErrorRate}%`);
   console.log(`  -> Global P95 Latency:     ${data.globalP95LatencyMs}ms`);
   console.log(`  -> Total Spans Recorded:   ${data.totalSpansRecorded}`);
@@ -196,12 +173,6 @@ export async function runDashboardVerification() {
   if (claudeReqs === 0 || deepseekReqs === 0 || geminiReqs === 0) {
     throw new Error(
       "FAIL: Model usage panel flatlined for one or more active models!",
-    );
-  }
-
-  if ((data.crossSessionMetrics?.totalPublished || 0) < 2) {
-    throw new Error(
-      "FAIL: Cross-session metrics panel flatlined on published messages!",
     );
   }
 

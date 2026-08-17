@@ -26,12 +26,12 @@ export function resolveSessionConfig(
   const roleId = input.role || (input.metadata?.role as string) || "general";
   const role = roleRegistry.getRole(roleId);
 
+  const envModel = process.env.OPENROUTER_MODEL;
   const model =
     input.model ||
-    (hasExplicitRole
-      ? role.defaultModel
-      : defaults.defaultModel || role.defaultModel) ||
-    process.env.OPENROUTER_MODEL ||
+    defaults.defaultModel ||
+    envModel ||
+    (hasExplicitRole ? role.defaultModel : role.defaultModel) ||
     "openrouter/free";
 
   const systemPrompt =

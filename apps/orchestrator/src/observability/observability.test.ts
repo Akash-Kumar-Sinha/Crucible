@@ -413,5 +413,7 @@ describe("Health Check API Pattern", () => {
     expect(resHealth.status).toBe(200);
     const bodyHealth = await resHealth.json();
     expect(bodyHealth.status).toBe("ok");
+
+    sessionManager.clear();
   });
 });

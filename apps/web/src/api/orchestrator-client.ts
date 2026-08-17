@@ -63,55 +63,6 @@ export interface RoleInfo {
   capabilities: string[];
 }
 
-export interface InterSessionMessage {
-  id: string;
-  sourceSessionId: string;
-  targetSessionId: string;
-  type: "delegation" | "result" | "query" | "event" | "notification";
-  payload: Record<string, unknown>;
-  timestamp: number;
-  correlationId?: string;
-  tenantId?: string;
-}
-
-export interface SquadInfo {
-  id: string;
-  name: string;
-  stage:
-    | "idle"
-    | "coding"
-    | "testing"
-    | "auditing"
-    | "fixing"
-    | "completed"
-    | "failed"
-    | "stalled";
-  statusLine: string;
-  activeRole?: string;
-  activeSessionId?: string;
-  members: Record<
-    string,
-    { role: string; sessionId: string; model?: string; active: boolean }
-  >;
-  activeGoal?: string;
-  fixIterationCount: number;
-  maxFixIterations: number;
-  createdAt: number;
-  updatedAt: number;
-  stageStartedAt: number;
-  stageTimeoutMs: number;
-  tenantId?: string;
-  namespace?: string;
-  history?: Array<{
-    fromStage: string;
-    toStage: string;
-    timestamp: number;
-    triggerRole?: string;
-    targetRole?: string;
-    reason: string;
-  }>;
-}
-
 export interface AuditRecord {
   id: string;
   sequence: number;
@@ -134,18 +85,6 @@ export interface AuditIntegrityResult {
   valid: boolean;
   totalRecords: number;
   brokenSequence?: number;
-}
-
-export interface PreviewInfo {
-  sessionId: string;
-  port: number;
-  status: "idle" | "starting" | "ready" | "crashed" | "stopped";
-  framework: "vite" | "static" | "react" | "next" | "html";
-  targetUrl: string;
-  proxiedPath: string;
-  startedAt: number;
-  lastActiveAt: number;
-  error?: string;
 }
 
 export interface SessionDetail {
@@ -484,54 +423,6 @@ export class OrchestratorClient {
     });
   }
 
-  async getInterSessionMessages(limit = 50): Promise<{
-    messages: InterSessionMessage[];
-    metrics: {
-      activeSubscribers: number;
-      totalPublished: number;
-      totalDelivered: number;
-      totalUndeliverable: number;
-      deadLetterCount: number;
-    };
-    deadLetters: InterSessionMessage[];
-  }> {
-    try {
-      const data = await this.request<{
-        status: string;
-        data: {
-          messages: InterSessionMessage[];
-          metrics: any;
-          deadLetters: InterSessionMessage[];
-        };
-      }>(`/inter-session/messages?limit=${limit}`, { timeoutMs: 4_000 });
-      return (
-        data.data || {
-          messages: [],
-          metrics: {
-            activeSubscribers: 0,
-            totalPublished: 0,
-            totalDelivered: 0,
-            totalUndeliverable: 0,
-            deadLetterCount: 0,
-          },
-          deadLetters: [],
-        }
-      );
-    } catch {
-      return {
-        messages: [],
-        metrics: {
-          activeSubscribers: 0,
-          totalPublished: 0,
-          totalDelivered: 0,
-          totalUndeliverable: 0,
-          deadLetterCount: 0,
-        },
-        deadLetters: [],
-      };
-    }
-  }
-
   async getSession(id: string): Promise<SessionDetail> {
     return this.request<SessionDetail>(`/sessions/${id}`, { timeoutMs: 5_000 });
   }
@@ -546,6 +437,13 @@ export class OrchestratorClient {
       timeoutMs: options.timeoutMs ?? 300_000,
       body: JSON.stringify({ message, async: options.async }),
     });
+  }
+
+  async updateSessionConfig(
+    _id: string,
+    _config: { model?: string; role?: string },
+  ): Promise<void> {
+    return Promise.resolve();
   }
 
   async approveGuardrailAction(
@@ -678,49 +576,6 @@ export class OrchestratorClient {
     return this.request(path, { timeoutMs: 5_000 });
   }
 
-  async getSquads(): Promise<{ squads: SquadInfo[]; count: number }> {
-    return this.request("/squads", { timeoutMs: 5_000 });
-  }
-
-  async getSquad(squadId: string): Promise<{ squad: SquadInfo }> {
-    return this.request(`/squads/${encodeURIComponent(squadId)}`, {
-      timeoutMs: 5_000,
-    });
-  }
-
-  async createSquad(
-    config: Partial<SquadInfo> & { name: string; autoCreateSessions?: boolean },
-  ): Promise<{ squad: SquadInfo; message: string }> {
-    return this.request("/squads", {
-      method: "POST",
-      body: JSON.stringify(config),
-      timeoutMs: 10_000,
-    });
-  }
-
-  async startSquad(
-    squadId: string,
-    goal: string,
-  ): Promise<{ squad: SquadInfo; message: string }> {
-    return this.request(`/squads/${encodeURIComponent(squadId)}/start`, {
-      method: "POST",
-      body: JSON.stringify({ goal }),
-      timeoutMs: 10_000,
-    });
-  }
-
-  async transitionSquad(
-    squadId: string,
-    toStage: string,
-    reason: string,
-  ): Promise<{ squad: SquadInfo; message: string }> {
-    return this.request(`/squads/${encodeURIComponent(squadId)}/transition`, {
-      method: "POST",
-      body: JSON.stringify({ toStage, reason }),
-      timeoutMs: 10_000,
-    });
-  }
-
   async getAuditRecords(params?: {
     sessionId?: string;
     squadId?: string;
@@ -747,38 +602,145 @@ export class OrchestratorClient {
     return this.request("/audit/verify", { timeoutMs: 5_000 });
   }
 
-  async getPreviewStatus(sessionId: string): Promise<{
+  async getVoiceToken(
+    sessionId: string,
+    options?: { participantName?: string; ttlSeconds?: number },
+  ): Promise<{
     status: string;
-    active: boolean;
-    preview: PreviewInfo | null;
+    data?: {
+      token: string;
+      wsUrl: string;
+      httpUrl: string;
+      roomName: string;
+      participantIdentity: string;
+      expiresAt: number;
+      agentIdentity: string;
+      agentState: string;
+    };
+    error?: { code: string; message: string };
   }> {
-    return this.request(`/preview/${encodeURIComponent(sessionId)}/status`, {
-      timeoutMs: 5_000,
-    });
+    return this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/voice/token`,
+      {
+        method: "POST",
+        body: JSON.stringify(options || {}),
+        timeoutMs: 8_000,
+      },
+    );
   }
 
-  async startPreview(
+  async transcribeAudio(
     sessionId: string,
-    options?: { port?: number; framework?: string; staticHtml?: string },
-  ): Promise<{ status: string; preview: PreviewInfo }> {
-    return this.request(`/preview/${encodeURIComponent(sessionId)}/start`, {
-      method: "POST",
-      body: JSON.stringify(options || {}),
-      timeoutMs: 10_000,
-    });
+    audioBase64: string,
+    mimeType = "audio/webm",
+  ): Promise<{
+    status: string;
+    data?: {
+      transcript: string;
+      durationMs: number;
+      forwarded: boolean;
+      agentState: string;
+    };
+    error?: { code: string; message: string };
+  }> {
+    return this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/voice/transcribe`,
+      {
+        method: "POST",
+        body: JSON.stringify({ audioBase64, mimeType }),
+        timeoutMs: 30_000,
+      },
+    );
   }
 
-  async stopPreview(
-    sessionId: string,
-  ): Promise<{ status: string; stopped: boolean }> {
-    return this.request(`/preview/${encodeURIComponent(sessionId)}/stop`, {
-      method: "POST",
-      timeoutMs: 5_000,
-    });
+  async getSessionVoiceStatus(sessionId: string): Promise<{
+    status: string;
+    data?: {
+      sessionId: string;
+      roomName: string;
+      agentState: string;
+      agentConnected: boolean;
+      serverReachable: boolean;
+      serverLatencyMs: number;
+      serverConfig: { wsUrl: string; httpUrl: string };
+    };
+  }> {
+    return this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/voice/status`,
+      { timeoutMs: 5_000 },
+    );
   }
 
-  getPreviewUrl(sessionId: string): string {
-    return `${getOrchestratorUrl()}/preview/${encodeURIComponent(sessionId)}/`;
+  async getGlobalVoiceStatus(): Promise<{
+    status: string;
+    data?: {
+      serverReachable: boolean;
+      serverLatencyMs: number;
+      activeRoomCount: number;
+      activeVoiceAgents: number;
+    };
+  }> {
+    return this.request("/voice/status", { timeoutMs: 5_000 });
+  }
+
+  async getResilienceStatus(): Promise<{
+    status: string;
+    hasOpenBreakers: boolean;
+    breakers: Array<{
+      name: string;
+      state: "closed" | "open" | "half_open";
+      failureCount: number;
+      successCount: number;
+      totalCalls: number;
+      totalFailures: number;
+      totalSuccesses: number;
+      consecutiveSuccesses: number;
+      lastStateChange: string;
+      lastError?: string;
+    }>;
+    rateLimiter?: {
+      sessionCapacity: number;
+      tenantCapacity: number;
+      globalCapacity: number;
+    };
+    costMeter?: {
+      maxCostPerRunUsd: number;
+      maxCostPerSessionUsd: number;
+    };
+  }> {
+    return this.request("/resilience/status", { timeoutMs: 5_000 });
+  }
+
+  async resetCircuitBreaker(name: string): Promise<{
+    status: string;
+    message?: string;
+    error?: { code: string; message: string };
+  }> {
+    return this.request(
+      `/resilience/breakers/${encodeURIComponent(name)}/reset`,
+      {
+        method: "POST",
+        timeoutMs: 5_000,
+      },
+    );
+  }
+
+  async tripCircuitBreaker(
+    name: string,
+    reason?: string,
+  ): Promise<{
+    status: string;
+    message?: string;
+    error?: { code: string; message: string };
+  }> {
+    return this.request(
+      `/resilience/breakers/${encodeURIComponent(name)}/trip`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        timeoutMs: 5_000,
+      },
+    );
   }
 }
 

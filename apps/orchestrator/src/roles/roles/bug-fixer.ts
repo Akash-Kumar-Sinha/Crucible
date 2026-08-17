@@ -5,7 +5,7 @@ export const bugFixerRole: AgentRole = {
   name: "Bug Fixer",
   description:
     "Debugging and remediation specialist focused on root-cause analysis, surgical patch application, and regression prevention.",
-  defaultModel: "anthropic/claude-3.5-sonnet",
+  defaultModel: "openrouter/free",
   allowedTools: [
     "bash_exec",
     "read_file",

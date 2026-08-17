@@ -2,18 +2,18 @@
 
 import * as React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { orchestratorClient } from "../../../../api/orchestrator-client";
-import { useSessionStore } from "../../../../stores/session-store";
+import { orchestratorClient } from "@/api/orchestrator-client";
+import { useSessionStore } from "@/stores/session-store";
 import { SessionSidebar } from "@/components/sidebar/SessionSidebar";
 import { ChatWindow } from "@/components/workspace/ChatWindow";
-import { readTenantScope } from "../../../../config/tenant-scope";
+import { readTenantScope } from "@/config/tenant-scope";
 import {
   SidebarProvider,
   Sidebar,
   SidebarInset,
 } from "@/components/ui/sidebar";
 
-export default function WorkspaceNestedSessionPage() {
+export default function SessionDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -101,7 +101,7 @@ export default function WorkspaceNestedSessionPage() {
           setCurrentSession(sessionDetail);
           setSessions(sessionList);
 
-          // Handle initial prompt from searchParams if passed from empty workspace
+          // Handle initial prompt from searchParams if passed from empty session
           const initialPrompt = searchParams.get("initialPrompt");
           if (initialPrompt && !initialPromptHandledRef.current) {
             initialPromptHandledRef.current = true;
@@ -172,11 +172,30 @@ export default function WorkspaceNestedSessionPage() {
       await orchestratorClient.deleteSession(id);
       removeSessionFromList(id);
       if (id === sessionId) {
-        router.push("/workspace");
+        router.push("/workspace/session");
       }
     } catch (err: any) {
       setError(err?.message || "Failed to delete session.");
     }
+  };
+
+  const handleSendMessageFromActive = async (
+    text: string,
+    model?: string,
+    role?: string,
+  ) => {
+    if (!session) return;
+    if (model || role) {
+      try {
+        await orchestratorClient.updateSessionConfig(sessionId, {
+          model,
+          role,
+        });
+      } catch {
+        // ignore
+      }
+    }
+    await handleSendMessage(text);
   };
 
   return (
@@ -200,7 +219,7 @@ export default function WorkspaceNestedSessionPage() {
         <SidebarInset className="flex flex-1 flex-col overflow-hidden bg-zinc-950">
           <ChatWindow
             session={session}
-            onSendMessage={handleSendMessage}
+            onSendMessage={handleSendMessageFromActive}
             error={error}
           />
         </SidebarInset>

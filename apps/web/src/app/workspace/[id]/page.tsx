@@ -17,7 +17,7 @@ export default function WorkspaceIdRedirectPage() {
         : `/workspace/session/${sessionId}`;
       router.replace(target);
     } else {
-      router.replace("/workspace");
+      router.replace("/workspace/session");
     }
   }, [sessionId, searchParams, router]);
 
